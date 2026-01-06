@@ -248,21 +248,72 @@ def interactive_menu():
                     items = scan_service.scan_image_preview(str(path))
 
                 if items:
-                    console.print(f"[green]✓ Detected {len(items)} item(s):[/green]\n")
-                    display_items(items, show_row_numbers=True)
-                    console.print()
+                    # Review loop - let user edit/delete items before saving
+                    while True:
+                        console.print(f"[green]✓ Detected {len(items)} item(s):[/green]\n")
+                        display_items(items, show_row_numbers=True)
+                        console.print()
+                        console.print("[dim]  Press Enter to save all[/dim]")
+                        console.print("[dim]  Enter number to edit item (e.g. '1')[/dim]")
+                        console.print("[dim]  Enter 'd' + number to delete (e.g. 'd1')[/dim]")
+                        console.print()
 
-                    # Let user edit quantities
-                    console.print("[cyan]Set quantities for each item (press Enter to keep default of 1):[/cyan]\n")
-                    for idx, item in enumerate(items, 1):
-                        unit_hint = f" ({item.unit})" if item.unit != "unit" else ""
-                        qty_input = console.input(f"  {idx}. {item.name}{unit_hint}: ").strip()
-                        if qty_input.replace('.', '', 1).isdigit() and float(qty_input) > 0:
-                            item.quantity = float(qty_input)
+                        action = console.input("[cyan]>[/cyan] ").strip().lower()
 
-                    # Save items
-                    scan_service.save_items(items)
-                    console.print(f"\n[green]✓ Added {len(items)} item(s) to inventory![/green]")
+                        if action == "":
+                            # Save all items
+                            if items:
+                                scan_service.save_items(items)
+                                console.print(f"\n[green]✓ Added {len(items)} item(s) to inventory![/green]")
+                            else:
+                                console.print("[yellow]No items to save.[/yellow]")
+                            break
+
+                        elif action.startswith("d") and action[1:].isdigit():
+                            # Delete item
+                            idx = int(action[1:])
+                            if 1 <= idx <= len(items):
+                                removed = items.pop(idx - 1)
+                                console.print(f"[yellow]✓ Removed:[/yellow] {removed.name}\n")
+                            else:
+                                console.print(f"[red]Invalid number. Enter 1-{len(items)}[/red]\n")
+
+                        elif action.isdigit():
+                            # Edit item
+                            idx = int(action)
+                            if 1 <= idx <= len(items):
+                                item = items[idx - 1]
+                                console.print(f"\n[bold]Editing: {item.name}[/bold]")
+                                console.print("[dim]Press Enter to keep current value[/dim]\n")
+
+                                # Edit name
+                                new_name = console.input(f"  Name [{item.name}]: ").strip()
+                                if new_name:
+                                    item.name = new_name
+
+                                # Edit quantity
+                                unit_hint = f" ({item.unit})" if item.unit != "unit" else ""
+                                qty_display = int(item.quantity) if item.quantity == int(item.quantity) else item.quantity
+                                new_qty = console.input(f"  Quantity{unit_hint} [{qty_display}]: ").strip()
+                                if new_qty.replace('.', '', 1).isdigit() and float(new_qty) > 0:
+                                    item.quantity = float(new_qty)
+
+                                # Edit expiry date
+                                current_expiry = item.expiry_date.strftime("%Y-%m-%d") if item.expiry_date else "none"
+                                new_expiry = console.input(f"  Expiry date [{current_expiry}]: ").strip()
+                                if new_expiry:
+                                    try:
+                                        from datetime import datetime
+                                        item.expiry_date = datetime.strptime(new_expiry, "%Y-%m-%d").date()
+                                    except ValueError:
+                                        console.print("[red]  Invalid date format. Use YYYY-MM-DD[/red]")
+
+                                console.print(f"[green]✓ Updated {item.name}[/green]\n")
+                            else:
+                                console.print(f"[red]Invalid number. Enter 1-{len(items)}[/red]\n")
+
+                        else:
+                            console.print("[red]Invalid input.[/red]\n")
                 else:
                     console.print("[yellow]No food items detected in image.[/yellow]")
             else:
