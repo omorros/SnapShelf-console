@@ -11,6 +11,7 @@ from rich.panel import Panel
 from pathlib import Path
 from datetime import date
 from typing import List
+from tkinter import Tk, filedialog
 
 from services.scan_service import ScanService
 from storage.inventory import InventoryStorage
@@ -221,23 +222,40 @@ def interactive_menu():
 
         # Process user choice
         if choice == "1":
-            # Scan image
-            image_path = console.input("[cyan]Enter image path:[/cyan] ").strip()
+            # Scan image - Open file picker dialog
+            console.print("[cyan]Opening file picker...[/cyan]")
+
+            # Initialize tkinter and hide root window
+            root = Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+
+            # Open file dialog
+            image_path = filedialog.askopenfilename(
+                title="Select Food Image",
+                filetypes=[
+                    ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif"),
+                    ("All files", "*.*")
+                ]
+            )
+
+            # Clean up tkinter
+            root.destroy()
+
             if image_path:
                 path = Path(image_path)
-                if path.exists():
-                    console.print(f"\n[bold]Scanning:[/bold] {path.name}\n")
-                    with console.status("Detecting objects..."):
-                        scan_service = ScanService()
-                        items = scan_service.scan_image(str(path))
+                console.print(f"\n[bold]Scanning:[/bold] {path.name}\n")
+                with console.status("Detecting objects..."):
+                    scan_service = ScanService()
+                    items = scan_service.scan_image(str(path))
 
-                    if items:
-                        console.print(f"[green]✓ Added {len(items)} items to inventory:[/green]\n")
-                        display_items(items)
-                    else:
-                        console.print("[yellow]No food items detected in image.[/yellow]")
+                if items:
+                    console.print(f"[green]✓ Added {len(items)} items to inventory:[/green]\n")
+                    display_items(items)
                 else:
-                    console.print(f"[red]Error: File not found: {image_path}[/red]")
+                    console.print("[yellow]No food items detected in image.[/yellow]")
+            else:
+                console.print("[yellow]No file selected.[/yellow]")
 
         elif choice == "2":
             # View inventory
