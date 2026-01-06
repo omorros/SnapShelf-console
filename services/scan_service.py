@@ -77,6 +77,7 @@ class ScanService:
                     category=result["category"],
                     freshness=result["freshness"],
                     expiry_date=expiry_date,
+                    unit=result.get("unit", "unit"),
                     storage_tip=result.get("storage_tip", ""),
                     confidence=result.get("confidence", 0.8)
                 )

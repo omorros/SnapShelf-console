@@ -46,6 +46,7 @@ class LLMService:
   "category": "One of: Fruit, Vegetable, Dairy, Meat, Seafood, Grain, Beverage, Condiment, Snack, Prepared Food, Other",
   "freshness": "One of: Fresh, Good, Fair, Poor",
   "expiry_days": <integer estimate>,
+  "unit": "Best unit for this item: 'unit' for countable items (eggs, apples), 'g' or 'kg' for weight-based, 'ml' or 'L' for liquids",
   "confidence": <float 0-1>,
   "storage_tip": "Brief storage recommendation"
 }

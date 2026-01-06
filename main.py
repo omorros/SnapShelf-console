@@ -257,8 +257,9 @@ def interactive_menu():
                     # Let user edit quantities
                     console.print("[cyan]Set quantities for each item (press Enter to keep default of 1):[/cyan]\n")
                     for idx, item in enumerate(items, 1):
-                        qty_input = console.input(f"  {idx}. {item.name} - Quantity: ").strip()
-                        if qty_input.isdigit() and int(qty_input) > 0:
+                        unit_hint = f" ({item.unit})" if item.unit != "unit" else ""
+                        qty_input = console.input(f"  {idx}. {item.name}{unit_hint}: ").strip()
+                        if qty_input.replace('.', '', 1).isdigit() and float(qty_input) > 0:
                             item.quantity = float(qty_input)
 
                     # Save items

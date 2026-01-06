@@ -53,8 +53,10 @@ def display_items(items: List[FoodItem], show_row_numbers: bool = False):
         else:
             status_str = "[bold green]Fresh[/bold green]"
 
-        # Format quantity
-        qty_str = str(int(item.quantity)) if item.quantity == int(item.quantity) else str(item.quantity)
+        # Format quantity with unit
+        qty_val = str(int(item.quantity)) if item.quantity == int(item.quantity) else str(item.quantity)
+        unit_display = "" if item.unit == "unit" else f" {item.unit}"
+        qty_str = f"{qty_val}{unit_display}"
 
         # Add row to table
         first_col = str(idx) if show_row_numbers else item.id
