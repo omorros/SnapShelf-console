@@ -308,24 +308,46 @@ def interactive_menu():
                     idx = int(selection)
                     if 1 <= idx <= len(items):
                         item = items[idx - 1]
-                        # Ask for reason
-                        console.print(f"\n[bold]What happened to {item.name}?[/bold]\n")
-                        console.print("  1. Consumed (eaten/used)")
-                        console.print("  2. Discarded (thrown away)")
-                        console.print("  3. Delete (remove from history)")
+                        # Ask for action
+                        unit_str = f" {item.unit}" if item.unit != "unit" else ""
+                        qty_display = int(item.quantity) if item.quantity == int(item.quantity) else item.quantity
+                        console.print(f"\n[bold]What happened to {item.name}? (Current: {qty_display}{unit_str})[/bold]\n")
+                        console.print("  1. Use some (reduce quantity)")
+                        console.print("  2. Consumed all")
+                        console.print("  3. Discarded (thrown away)")
+                        console.print("  4. Delete (remove from history)")
                         console.print("  c. Cancel")
                         console.print()
-                        reason = console.input("[cyan]Select option:[/cyan] ").strip()
-                        if reason == "1":
+                        action = console.input("[cyan]Select option:[/cyan] ").strip()
+                        if action == "1":
+                            # Use some - reduce quantity
+                            amount_input = console.input(f"[cyan]How much did you use?{unit_str}: [/cyan]").strip()
+                            if amount_input.replace('.', '', 1).isdigit():
+                                amount = float(amount_input)
+                                if amount >= item.quantity:
+                                    # Used all or more - mark as consumed
+                                    storage.update(item.id, {"status": "consumed"})
+                                    console.print(f"[green]✓ All consumed:[/green] {item.name}")
+                                elif amount > 0:
+                                    # Reduce quantity
+                                    new_qty = item.quantity - amount
+                                    storage.update(item.id, {"quantity": new_qty})
+                                    new_display = int(new_qty) if new_qty == int(new_qty) else new_qty
+                                    console.print(f"[green]✓ Updated:[/green] {item.name} ({new_display}{unit_str} remaining)")
+                                else:
+                                    console.print("[red]Amount must be greater than 0.[/red]")
+                            else:
+                                console.print("[red]Invalid amount.[/red]")
+                        elif action == "2":
                             storage.update(item.id, {"status": "consumed"})
                             console.print(f"[green]✓ Marked as consumed:[/green] {item.name}")
-                        elif reason == "2":
+                        elif action == "3":
                             storage.update(item.id, {"status": "discarded"})
                             console.print(f"[yellow]✓ Marked as discarded:[/yellow] {item.name}")
-                        elif reason == "3":
+                        elif action == "4":
                             storage.remove(item.id)
                             console.print(f"[green]✓ Deleted:[/green] {item.name}")
-                        elif reason.lower() != 'c':
+                        elif action.lower() != 'c':
                             console.print("[red]Invalid option.[/red]")
                     else:
                         console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
