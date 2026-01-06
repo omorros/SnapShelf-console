@@ -39,18 +39,18 @@ def display_items(items: List[FoodItem], show_row_numbers: bool = False):
         else:
             expiry_str = "No expiry"
 
-        # Determine status emoji and text based on expiry
+        # Determine status with colored text based on expiry
         status = item.expiry_status()
         if status == "expired":
-            status_str = "🔴 Expired"
+            status_str = "[bold red]Expired[/bold red]"
         elif status == "urgent":
-            status_str = "🔴 Urgent"
+            status_str = "[bold red]Urgent[/bold red]"
         elif status == "warning":
-            status_str = "🟠 Soon"
+            status_str = "[bold orange1]Soon[/bold orange1]"
         elif status == "good":
-            status_str = "🟡 Good"
+            status_str = "[bold yellow]Good[/bold yellow]"
         else:
-            status_str = "🟢 Fresh"
+            status_str = "[bold green]Fresh[/bold green]"
 
         # Add row to table
         first_col = str(idx) if show_row_numbers else item.id
