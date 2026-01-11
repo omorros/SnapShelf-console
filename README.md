@@ -1,46 +1,47 @@
 # Food Detection Pipeline Comparison
 
-Interactive console application for comparing two food detection approaches:
+Dissertation artefact comparing two approaches for multi-item food identification:
 
 | System | Approach | Description |
 |--------|----------|-------------|
-| **A** | LLM-only | Full image → GPT-4o Vision → All items detected |
-| **B** | YOLO + LLM | YOLO regions → GPT-4o per crop → Aggregated results |
+| **A** | LLM-only | Full image → GPT-4o Vision → All items |
+| **B** | YOLO + LLM | YOLO regions → GPT-4o per crop → Aggregated |
 
 ## Quick Start
 
 ```bash
-# 1. Activate virtual environment
+# Activate virtual environment
 venv\Scripts\activate      # Windows
 source venv/bin/activate   # macOS/Linux
 
-# 2. Run the application
+# Interactive mode (menu-driven)
 python main.py
+
+# CLI mode (JSON output)
+python main.py llm <image_path>
+python main.py yolo-llm <image_path>
 ```
 
-## Setup (First Time)
+## Setup
 
 ```bash
-# Create virtual environment
+# 1. Create virtual environment
 python -m venv venv
 venv\Scripts\activate
 
-# Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# Configure API key
+# 3. Download YOLO model
+# Place yolov8s.pt in project root
+# Download from: https://github.com/ultralytics/assets/releases
+
+# 4. Configure API key
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Edit .env with your OpenAI API key
 ```
 
-## How It Works
-
-1. Run `python main.py`
-2. Select pipeline (1 for LLM-only, 2 for YOLO+LLM)
-3. File picker opens — select an image
-4. Results displayed in table format + raw JSON
-
-## Output Schema
+## Output Schema (Frozen)
 
 Both systems produce identical output format:
 
@@ -52,39 +53,69 @@ Both systems produce identical output format:
   ],
   "meta": {
     "pipeline": "llm",
-    "image": "groceries.jpg"
+    "image": "groceries.jpg",
+    "runtime_ms": 1234.56,
+    "fallback_used": false
   }
 }
 ```
 
-### State Values
+### Fields
 
-| State | Description |
+| Field | Description |
 |-------|-------------|
-| `fresh` | Raw produce, unpackaged |
-| `packaged` | In container/wrapper/box |
-| `cooked` | Prepared/cooked food |
-| `unknown` | Cannot determine |
+| `name` | Generic food name (lowercase, normalized) |
+| `state` | `fresh` \| `packaged` \| `cooked` \| `unknown` |
+| `pipeline` | `llm` or `yolo-llm` |
+| `runtime_ms` | Execution time in milliseconds |
+| `fallback_used` | True if YOLO found no detections and used full image |
 
 ## Project Structure
 
 ```
-├── main.py              # Interactive console app
-├── config.py            # Environment configuration
+├── main.py                  # CLI + Interactive entrypoint
+├── requirements.txt         # Dependencies
+├── .env.example             # API key template
+├── .gitignore
+├── yolov8s.pt               # YOLO model (not tracked)
 ├── clients/
-│   ├── llm_client.py    # OpenAI Vision API (frozen prompts)
-│   └── yolo_detector.py # YOLOv8 detection
-├── pipelines/
-│   ├── output.py        # Shared output schema
-│   ├── llm_pipeline.py  # System A implementation
-│   └── yolo_llm_pipeline.py  # System B implementation
-├── requirements.txt
-├── .env.example
-└── yolov8s.pt           # YOLO model weights
+│   ├── llm_client.py        # OpenAI Vision (frozen prompts)
+│   └── yolo_detector.py     # YOLOv8 detection
+└── pipelines/
+    ├── output.py            # Frozen output schema
+    ├── llm_pipeline.py      # System A
+    └── yolo_llm_pipeline.py # System B
 ```
+
+## Configuration
+
+### LLM Settings (clients/llm_client.py)
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Model | `gpt-4o-mini` | Cost-efficient |
+| Temperature | `0` | Deterministic |
+| Image Detail | `high` | Same for both systems |
+
+### YOLO Settings (clients/yolo_detector.py)
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `CONF_THRESHOLD` | `0.25` | Lower = more detections |
+| `IOU_THRESHOLD` | `0.45` | NMS overlap threshold |
+| `MAX_DETECTIONS` | `15` | Limit per image |
+| `CROP_PADDING_PCT` | `0.10` | 10% padding around crops |
+
+### Fallback Behavior (pipelines/yolo_llm_pipeline.py)
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `USE_FALLBACK` | `True` | Use full image if YOLO finds nothing |
+
+Set to `False` for strict comparison (System B returns empty if no YOLO detections).
 
 ## Requirements
 
 - Python 3.10+
 - OpenAI API key
-- ~50MB disk space (YOLO model)
+- ~25MB disk (YOLO model)
