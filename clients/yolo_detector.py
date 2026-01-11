@@ -147,39 +147,31 @@ class YOLODetector:
 
         return detections
 
-    def detect_with_fallback(self, image_path: str) -> List[dict]:
+    def get_full_image_fallback(self, image_path: str) -> List[dict]:
         """
-        Detect objects with fallback to full image if no detections.
-
-        Same as detect() but returns the full image as a single region
-        if YOLO finds no objects.
+        Return full image as a single detection region.
+        Used when YOLO finds no detections and fallback is enabled.
 
         Args:
             image_path: Path to the image file
 
         Returns:
-            List of detection dicts (at least one - full image if empty)
+            List with single detection covering full image
         """
-        detections = self.detect(image_path)
+        image = Image.open(image_path)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
 
-        # Fallback: use entire image if no detections
-        if not detections:
-            image = Image.open(image_path)
-            if image.mode != "RGB":
-                image = image.convert("RGB")
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
 
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-
-            detections.append({
-                "bbox": {
-                    "x": 0,
-                    "y": 0,
-                    "width": image.width,
-                    "height": image.height
-                },
-                "image_bytes": buffer.getvalue(),
-                "confidence": 1.0
-            })
-
-        return detections
+        return [{
+            "bbox": {
+                "x": 0,
+                "y": 0,
+                "width": image.width,
+                "height": image.height
+            },
+            "image_bytes": buffer.getvalue(),
+            "confidence": 1.0
+        }]
