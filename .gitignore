@@ -1,24 +1,49 @@
+# =============================================================================
+# Git Ignore - Food Detection Pipeline Comparison
+# =============================================================================
+
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 *.so
+.Python
 
 # Virtual Environment
 venv/
 env/
 .venv/
+ENV/
 
-# Environment Variables (contains API key)
+# Environment Variables (contains API key - NEVER commit)
 .env
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# YOLO models (large files - download separately)
+# YOLO models (large files - provide download instructions)
 *.pt
+
+# Outputs (generated during testing)
+outputs/
+results/
+*.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude Code
+.claude/
+
+# Distribution
+dist/
+build/
+*.egg-info/
