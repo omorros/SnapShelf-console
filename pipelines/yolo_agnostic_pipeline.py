@@ -1,13 +1,14 @@
 """
-System B: YOLO + LLM hybrid pipeline.
-YOLO proposes regions, LLM identifies per crop, results aggregated.
+Pipeline B: Class-agnostic YOLO + LLM hybrid pipeline.
+Standard YOLOv8 proposes regions (class labels ignored), LLM identifies per crop.
+Structural pre-processing only (no semantic prompts).
 """
 
 import time
 from pathlib import Path
 from typing import List
 
-from clients.yolo_detector import YOLODetector
+from clients.yolo_detector_agnostic import YOLODetectorAgnostic
 from clients.llm_client import LLMClient
 from pipelines.output import PipelineResult, ItemResult, make_result
 
@@ -16,51 +17,45 @@ from pipelines.output import PipelineResult, ItemResult, make_result
 # CONFIGURATION
 # =============================================================================
 
-# Fallback behavior when YOLO finds no detections:
-# - True: Use full image as single region (can contaminate comparison)
-# - False: Return empty items list (strict mode for fair comparison)
-USE_FALLBACK = True
+# Fallback disabled for fair dissertation experiment
+# If YOLO finds nothing, return empty (strict mode)
+USE_FALLBACK = False
 
 
 def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
     """
-    Execute YOLO-LLM hybrid pipeline (System B).
+    Execute class-agnostic YOLO + LLM hybrid pipeline (Pipeline B).
 
     Pipeline:
-        1. YOLO proposes regions (class labels ignored)
+        1. YOLOv8 proposes regions (class labels ignored)
         2. LLM identifies food in each crop
         3. Results aggregated (deduplicated by name)
 
     Args:
         image_path: Path to image file
-        use_fallback: If True, use full image when YOLO finds nothing
+        use_fallback: If True, use full image when YOLO finds nothing (disabled by default)
 
     Returns:
         PipelineResult with detected items and metadata
     """
     start_time = time.perf_counter()
-    fallback_used = False
 
-    # Step 1: YOLO region proposals
-    detector = YOLODetector()
+    # Step 1: Class-agnostic YOLO region proposals
+    detector = YOLODetectorAgnostic()
     detections = detector.detect(image_path)
+    detections_count = len(detections)
 
-    # Handle no detections
+    # Handle no detections (strict mode: return empty)
     if not detections:
-        if use_fallback:
-            # Fallback: use full image (logged for transparency)
-            detections = detector.get_full_image_fallback(image_path)
-            fallback_used = True
-        else:
-            # Strict mode: return empty
-            runtime_ms = (time.perf_counter() - start_time) * 1000
-            return make_result(
-                items=[],
-                pipeline="yolo-llm",
-                image=Path(image_path).name,
-                runtime_ms=runtime_ms,
-                fallback_used=False
-            )
+        runtime_ms = (time.perf_counter() - start_time) * 1000
+        return make_result(
+            items=[],
+            pipeline="yolo",
+            image=Path(image_path).name,
+            runtime_ms=runtime_ms,
+            fallback_used=False,
+            detections_count=0
+        )
 
     # Step 2: LLM per crop
     llm = LLMClient()
@@ -78,10 +73,11 @@ def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
 
     return make_result(
         items=items,
-        pipeline="yolo-llm",
+        pipeline="yolo",
         image=Path(image_path).name,
         runtime_ms=runtime_ms,
-        fallback_used=fallback_used
+        fallback_used=False,
+        detections_count=detections_count
     )
 
 

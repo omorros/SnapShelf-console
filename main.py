@@ -1,11 +1,12 @@
 """
 Food Detection Pipeline Comparison
-Research tool comparing LLM-only vs YOLO+LLM hybrid approaches.
+Research tool comparing three vision pre-processing approaches for food recognition.
 
 Usage:
-    python main.py                         Interactive menu
-    python main.py llm <image_path>        System A: LLM-only
-    python main.py yolo-llm <image_path>   System B: YOLO + LLM hybrid
+    python main.py                           Interactive menu
+    python main.py llm <image_path>          Pipeline A: LLM-only (baseline)
+    python main.py yolo <image_path>         Pipeline B: Class-agnostic YOLO + LLM
+    python main.py yolo-world <image_path>   Pipeline C: YOLO-World + LLM
 """
 
 import sys
@@ -31,7 +32,7 @@ def run_pipeline(pipeline_type: str, image_path: str) -> dict:
     Single source of truth for both CLI and interactive modes.
 
     Args:
-        pipeline_type: "llm" or "yolo-llm"
+        pipeline_type: "llm", "yolo", or "yolo-world"
         image_path: Path to image file
 
     Returns:
@@ -40,9 +41,12 @@ def run_pipeline(pipeline_type: str, image_path: str) -> dict:
     if pipeline_type == "llm":
         from pipelines import llm_pipeline
         return llm_pipeline.run(image_path)
-    else:
-        from pipelines import yolo_llm_pipeline
-        return yolo_llm_pipeline.run(image_path)
+    elif pipeline_type == "yolo":
+        from pipelines import yolo_agnostic_pipeline
+        return yolo_agnostic_pipeline.run(image_path)
+    else:  # yolo-world
+        from pipelines import yolo_world_pipeline
+        return yolo_world_pipeline.run(image_path)
 
 
 # =============================================================================
@@ -91,9 +95,10 @@ def show_menu():
     menu.add_column("Option", style="bold yellow", width=4)
     menu.add_column("Description", style="white")
 
-    menu.add_row("1.", "Run System A — LLM-only pipeline")
-    menu.add_row("2.", "Run System B — YOLO + LLM hybrid pipeline")
-    menu.add_row("3.", "Exit")
+    menu.add_row("1.", "Pipeline A — LLM-only (baseline)")
+    menu.add_row("2.", "Pipeline B — Class-agnostic YOLO + LLM")
+    menu.add_row("3.", "Pipeline C — YOLO-World + LLM")
+    menu.add_row("4.", "Exit")
 
     console.print(menu)
     console.print()
@@ -138,10 +143,12 @@ def display_results(result: dict, pipeline_name: str):
     console.print(f"[bold]Pipeline:[/bold] {meta.get('pipeline', 'N/A')}")
     console.print(f"[bold]Runtime:[/bold] {meta.get('runtime_ms', 0):.0f} ms")
 
-    if meta.get("pipeline") == "yolo-llm":
+    if meta.get("pipeline") in ("yolo", "yolo-world"):
         fallback = meta.get("fallback_used", False)
         fallback_str = "[yellow]Yes[/yellow]" if fallback else "[green]No[/green]"
         console.print(f"[bold]Fallback used:[/bold] {fallback_str}")
+        detections = meta.get("detections_count", "N/A")
+        console.print(f"[bold]Detections:[/bold] {detections}")
 
     console.print()
 
@@ -196,7 +203,12 @@ def interactive_run_pipeline(pipeline_type: str):
     console.print(f"\n[bold]Selected:[/bold] {path.name}")
 
     # Run pipeline
-    pipeline_name = "LLM-only (System A)" if pipeline_type == "llm" else "YOLO + LLM (System B)"
+    pipeline_names = {
+        "llm": "LLM-only (Pipeline A)",
+        "yolo": "Class-agnostic YOLO + LLM (Pipeline B)",
+        "yolo-world": "YOLO-World + LLM (Pipeline C)"
+    }
+    pipeline_name = pipeline_names.get(pipeline_type, pipeline_type)
 
     with console.status(f"[cyan]Running {pipeline_name}...[/cyan]", spinner="dots"):
         try:
@@ -213,24 +225,29 @@ def interactive_mode():
         show_header()
         show_menu()
 
-        choice = console.input("[bold green]Select option (1-3):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-4):[/bold green] ").strip()
 
         if choice == "1":
-            console.print("\n[bold cyan]═══ System A: LLM-only Pipeline ═══[/bold cyan]")
+            console.print("\n[bold cyan]═══ Pipeline A: LLM-only ═══[/bold cyan]")
             console.print("[dim]Sends full image to GPT-4o Vision for multi-item detection[/dim]\n")
             interactive_run_pipeline("llm")
 
         elif choice == "2":
-            console.print("\n[bold cyan]═══ System B: YOLO + LLM Hybrid ═══[/bold cyan]")
-            console.print("[dim]YOLO proposes regions → LLM identifies each crop → Results aggregated[/dim]\n")
-            interactive_run_pipeline("yolo-llm")
+            console.print("\n[bold cyan]═══ Pipeline B: Class-agnostic YOLO + LLM ═══[/bold cyan]")
+            console.print("[dim]YOLOv8 proposes regions (labels ignored) → LLM identifies each crop[/dim]\n")
+            interactive_run_pipeline("yolo")
 
         elif choice == "3":
+            console.print("\n[bold cyan]═══ Pipeline C: YOLO-World + LLM ═══[/bold cyan]")
+            console.print("[dim]YOLO-World proposes regions (semantic prompts) → LLM identifies each crop[/dim]\n")
+            interactive_run_pipeline("yolo-world")
+
+        elif choice == "4":
             console.print("\n[cyan]Goodbye![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-3.[/red]")
+            console.print("[red]Invalid option. Please select 1-4.[/red]")
 
         # Pause before returning to menu
         console.print()
@@ -257,9 +274,9 @@ def main():
         pipeline = sys.argv[1].lower()
 
         # Validate pipeline
-        if pipeline not in ("llm", "yolo-llm"):
+        if pipeline not in ("llm", "yolo", "yolo-world"):
             print(f"Error: Unknown pipeline '{pipeline}'", file=sys.stderr)
-            print("Use 'llm' or 'yolo-llm'", file=sys.stderr)
+            print("Use 'llm', 'yolo', or 'yolo-world'", file=sys.stderr)
             sys.exit(1)
 
         # CLI mode requires image path

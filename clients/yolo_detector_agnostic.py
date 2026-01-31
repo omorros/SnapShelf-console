@@ -1,25 +1,24 @@
 """
-YOLO-World detector module for open-vocabulary object detection.
-Uses YOLO-World for region proposals to be classified by LLM.
+Class-agnostic YOLO detector for structural pre-processing (Pipeline B).
+Uses standard YOLOv8 (COCO-trained) with class labels ignored.
+All detections treated as generic "object" regions for LLM classification.
 """
 
 import os
 os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from PIL import Image
 from io import BytesIO
-from ultralytics import YOLOWorld
+from ultralytics import YOLO
 
 
 # =============================================================================
-# YOLO-WORLD CONFIGURATION
-# Optimized for maximum recall in food detection scenarios
+# CONFIGURATION (matching YOLO-World for fair comparison)
 # =============================================================================
 
 # Confidence threshold (lower = more detections, higher recall)
-# 0.15 is aggressive to catch all potential food regions
 CONF_THRESHOLD = 0.15
 
 # IoU threshold for Non-Maximum Suppression
@@ -31,43 +30,30 @@ MAX_DETECTIONS = 20
 # Crop padding as percentage (captures context around objects)
 CROP_PADDING_PCT = 0.10
 
-# Open-vocabulary prompts for food detection
-# Generic prompts only (no specific food categories for fair comparison)
-DETECTION_PROMPTS = [
-    "food",
-    "fruit",
-    "vegetable",
-    "packaged food",
-    "object",
-    "item",
-]
-
 # =============================================================================
 
 
-class YOLODetector:
+class YOLODetectorAgnostic:
     """
-    YOLO-World open-vocabulary detector for region proposals.
+    Class-agnostic YOLOv8 detector for region proposals.
 
-    Uses text prompts to detect any object type without fine-tuning.
-    Returns cropped regions for LLM classification.
+    Uses standard COCO-trained YOLOv8 but ignores class labels.
+    Returns cropped regions for LLM classification (structural pre-processing only).
     """
 
     def __init__(
         self,
-        model_path: str = "yolov8s-worldv2.pt",
-        prompts: Optional[List[str]] = None,
+        model_path: str = "yolov8s.pt",
         conf_threshold: float = CONF_THRESHOLD,
         iou_threshold: float = IOU_THRESHOLD,
         max_detections: int = MAX_DETECTIONS,
         crop_padding: float = CROP_PADDING_PCT
     ):
         """
-        Initialize YOLO-World detector.
+        Initialize class-agnostic YOLOv8 detector.
 
         Args:
-            model_path: YOLO-World model weights (auto-downloads if missing)
-            prompts: Custom detection prompts (defaults to DETECTION_PROMPTS)
+            model_path: YOLOv8 model weights (auto-downloads if missing)
             conf_threshold: Detection confidence threshold (default 0.15)
             iou_threshold: NMS IoU threshold (default 0.45)
             max_detections: Max detections to return (default 20)
@@ -85,12 +71,8 @@ class YOLODetector:
                 # Let Ultralytics auto-download
                 resolved_path = model_path
 
-        # Load YOLO-World model
-        self.model = YOLOWorld(resolved_path)
-        
-        # Set detection prompts (open-vocabulary magic)
-        self.prompts = prompts or DETECTION_PROMPTS
-        self.model.set_classes(self.prompts)
+        # Load standard YOLOv8 model (COCO-trained, 80 classes)
+        self.model = YOLO(resolved_path)
 
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
@@ -99,7 +81,7 @@ class YOLODetector:
 
     def detect(self, image_path: str) -> List[dict]:
         """
-        Detect objects and return cropped regions.
+        Detect objects and return cropped regions (class labels ignored).
 
         Args:
             image_path: Path to the image file
@@ -109,13 +91,13 @@ class YOLODetector:
                 - bbox: {x, y, width, height}
                 - image_bytes: PNG bytes of cropped region
                 - confidence: Detection confidence
-                - prompt_match: Which prompt triggered detection
+                - prompt_match: Always "object" (class-agnostic)
         """
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
 
-        # Run YOLO-World detection
+        # Run YOLOv8 detection
         results = self.model(
             image,
             conf=self.conf_threshold,
@@ -131,11 +113,10 @@ class YOLODetector:
                 # Get bounding box coordinates
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
-                cls_id = int(box.cls[0])
-                
-                # Get which prompt matched
-                prompt_match = self.prompts[cls_id] if cls_id < len(self.prompts) else "unknown"
-                
+
+                # Class label intentionally ignored (class-agnostic)
+                # All detections treated as generic "object"
+
                 width, height = x2 - x1, y2 - y1
 
                 # Add padding to capture full object
@@ -162,31 +143,7 @@ class YOLODetector:
                     },
                     "image_bytes": buffer.getvalue(),
                     "confidence": conf,
-                    "prompt_match": prompt_match
+                    "prompt_match": "object"  # Class-agnostic: always "object"
                 })
 
         return detections
-
-    def get_full_image_fallback(self, image_path: str) -> List[dict]:
-        """
-        Return full image as a single detection region.
-        Used when YOLO finds no detections and fallback is enabled.
-        """
-        image = Image.open(image_path)
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-
-        return [{
-            "bbox": {
-                "x": 0,
-                "y": 0,
-                "width": image.width,
-                "height": image.height
-            },
-            "image_bytes": buffer.getvalue(),
-            "confidence": 1.0,
-            "prompt_match": "fallback"
-        }]

@@ -12,12 +12,13 @@ class ItemResult(TypedDict):
     state: str  # fresh | packaged | cooked | unknown
 
 
-class PipelineMeta(TypedDict):
+class PipelineMeta(TypedDict, total=False):
     """Pipeline execution metadata."""
-    pipeline: str  # "llm" or "yolo-llm"
+    pipeline: str  # "llm" | "yolo" | "yolo-world"
     image: str  # Filename
     runtime_ms: float  # Execution time in milliseconds
-    fallback_used: bool  # True if YOLO fallback was triggered (System B only)
+    fallback_used: bool  # True if YOLO fallback was triggered (Pipeline B/C only)
+    detections_count: int  # Number of YOLO detections (Pipeline B/C only)
 
 
 class PipelineResult(TypedDict):
@@ -31,27 +32,35 @@ def make_result(
     pipeline: str,
     image: str,
     runtime_ms: float,
-    fallback_used: bool = False
+    fallback_used: bool = False,
+    detections_count: int = None
 ) -> PipelineResult:
     """
     Create standardized pipeline result.
 
     Args:
         items: List of detected items
-        pipeline: "llm" or "yolo-llm"
+        pipeline: "llm" | "yolo" | "yolo-world"
         image: Image filename
         runtime_ms: Execution time in milliseconds
         fallback_used: Whether YOLO fallback was triggered
+        detections_count: Number of YOLO detections (Pipeline B/C only)
 
     Returns:
         PipelineResult dict
     """
+    meta = {
+        "pipeline": pipeline,
+        "image": image,
+        "runtime_ms": round(runtime_ms, 2),
+        "fallback_used": fallback_used
+    }
+
+    # Only include detections_count for YOLO pipelines
+    if detections_count is not None:
+        meta["detections_count"] = detections_count
+
     return {
         "items": items,
-        "meta": {
-            "pipeline": pipeline,
-            "image": image,
-            "runtime_ms": round(runtime_ms, 2),
-            "fallback_used": fallback_used
-        }
+        "meta": meta
     }
