@@ -13,27 +13,20 @@ from clients.llm_client import LLMClient
 from pipelines.output import PipelineResult, ItemResult, make_result
 
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-# Fallback disabled for fair dissertation experiment
-# If YOLO finds nothing, return empty (strict mode)
-USE_FALLBACK = False
-
-
-def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
+def run(image_path: str) -> PipelineResult:
     """
     Execute class-agnostic YOLO + LLM hybrid pipeline (Pipeline B).
 
     Pipeline:
-        1. YOLOv8 proposes regions (class labels ignored)
+        1. YOLOv8 proposes regions (class labels ignored, geometric filtering only)
         2. LLM identifies food in each crop
         3. Results aggregated (deduplicated by name)
 
+    Fallback is DISABLED for experimental fairness.
+    If YOLO detects nothing, returns empty result.
+
     Args:
         image_path: Path to image file
-        use_fallback: If True, use full image when YOLO finds nothing (disabled by default)
 
     Returns:
         PipelineResult with detected items and metadata

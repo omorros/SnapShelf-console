@@ -25,21 +25,21 @@ CONF_THRESHOLD = 0.15
 # IoU threshold for Non-Maximum Suppression
 IOU_THRESHOLD = 0.45
 
-# Maximum detections per image
-MAX_DETECTIONS = 20
+# Maximum detections per image (reduced to limit noise)
+MAX_DETECTIONS = 8
 
 # Crop padding as percentage (captures context around objects)
 CROP_PADDING_PCT = 0.10
 
 # Open-vocabulary prompts for food detection
-# Generic prompts only (no specific food categories for fair comparison)
+# FIXED LIST - identical for all images, no dynamic changes
+# Semantic food categories only (no generic "object"/"item" to maintain
+# clear distinction from class-agnostic Pipeline B)
 DETECTION_PROMPTS = [
     "food",
     "fruit",
     "vegetable",
     "packaged food",
-    "object",
-    "item",
 ]
 
 # =============================================================================
@@ -166,27 +166,3 @@ class YOLODetector:
                 })
 
         return detections
-
-    def get_full_image_fallback(self, image_path: str) -> List[dict]:
-        """
-        Return full image as a single detection region.
-        Used when YOLO finds no detections and fallback is enabled.
-        """
-        image = Image.open(image_path)
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-
-        return [{
-            "bbox": {
-                "x": 0,
-                "y": 0,
-                "width": image.width,
-                "height": image.height
-            },
-            "image_bytes": buffer.getvalue(),
-            "confidence": 1.0,
-            "prompt_match": "fallback"
-        }]

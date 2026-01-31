@@ -24,11 +24,24 @@ CONF_THRESHOLD = 0.15
 # IoU threshold for Non-Maximum Suppression
 IOU_THRESHOLD = 0.45
 
-# Maximum detections per image
-MAX_DETECTIONS = 20
+# Maximum detections per image (reduced to limit noise)
+MAX_DETECTIONS = 8
 
 # Crop padding as percentage (captures context around objects)
 CROP_PADDING_PCT = 0.10
+
+# =============================================================================
+# GEOMETRIC FILTERS (non-semantic noise reduction)
+# =============================================================================
+
+# Minimum bounding box area as percentage of image area
+# Filters out tiny detections (noise, distant objects)
+MIN_BBOX_AREA_PCT = 0.02  # 2% of image area
+
+# Aspect ratio constraints (width/height)
+# Filters out extremely elongated detections (edges, lines)
+MIN_ASPECT_RATIO = 0.2   # Not too tall/narrow
+MAX_ASPECT_RATIO = 5.0   # Not too wide/flat
 
 # =============================================================================
 
@@ -39,6 +52,7 @@ class YOLODetectorAgnostic:
 
     Uses standard COCO-trained YOLOv8 but ignores class labels.
     Returns cropped regions for LLM classification (structural pre-processing only).
+    Applies geometric filtering to reduce noise (no semantic reasoning).
     """
 
     def __init__(
@@ -47,7 +61,10 @@ class YOLODetectorAgnostic:
         conf_threshold: float = CONF_THRESHOLD,
         iou_threshold: float = IOU_THRESHOLD,
         max_detections: int = MAX_DETECTIONS,
-        crop_padding: float = CROP_PADDING_PCT
+        crop_padding: float = CROP_PADDING_PCT,
+        min_bbox_area_pct: float = MIN_BBOX_AREA_PCT,
+        min_aspect_ratio: float = MIN_ASPECT_RATIO,
+        max_aspect_ratio: float = MAX_ASPECT_RATIO
     ):
         """
         Initialize class-agnostic YOLOv8 detector.
@@ -56,8 +73,11 @@ class YOLODetectorAgnostic:
             model_path: YOLOv8 model weights (auto-downloads if missing)
             conf_threshold: Detection confidence threshold (default 0.15)
             iou_threshold: NMS IoU threshold (default 0.45)
-            max_detections: Max detections to return (default 20)
+            max_detections: Max detections to return (default 8)
             crop_padding: Padding percentage for crops (default 0.10)
+            min_bbox_area_pct: Minimum bbox area as % of image (default 0.02)
+            min_aspect_ratio: Minimum width/height ratio (default 0.2)
+            max_aspect_ratio: Maximum width/height ratio (default 5.0)
         """
         # Resolve model path
         if Path(model_path).exists():
@@ -79,9 +99,46 @@ class YOLODetectorAgnostic:
         self.max_detections = max_detections
         self.crop_padding = crop_padding
 
+        # Geometric filter parameters (non-semantic noise reduction)
+        self.min_bbox_area_pct = min_bbox_area_pct
+        self.min_aspect_ratio = min_aspect_ratio
+        self.max_aspect_ratio = max_aspect_ratio
+
+    def _passes_geometric_filter(
+        self, width: int, height: int, image_area: int
+    ) -> bool:
+        """
+        Check if detection passes geometric filters (non-semantic).
+
+        Args:
+            width: Bounding box width
+            height: Bounding box height
+            image_area: Total image area (width * height)
+
+        Returns:
+            True if detection passes all geometric constraints
+        """
+        # Filter 1: Minimum area (removes tiny/noise detections)
+        bbox_area = width * height
+        area_pct = bbox_area / image_area
+        if area_pct < self.min_bbox_area_pct:
+            return False
+
+        # Filter 2: Aspect ratio (removes elongated/edge detections)
+        if height == 0:
+            return False
+        aspect_ratio = width / height
+        if aspect_ratio < self.min_aspect_ratio or aspect_ratio > self.max_aspect_ratio:
+            return False
+
+        return True
+
     def detect(self, image_path: str) -> List[dict]:
         """
         Detect objects and return cropped regions (class labels ignored).
+
+        Applies geometric filtering to reduce noise from non-food detections.
+        NO semantic reasoning - only structural/geometric constraints.
 
         Args:
             image_path: Path to the image file
@@ -96,6 +153,8 @@ class YOLODetectorAgnostic:
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
+
+        image_area = image.width * image.height
 
         # Run YOLOv8 detection
         results = self.model(
@@ -118,6 +177,10 @@ class YOLODetectorAgnostic:
                 # All detections treated as generic "object"
 
                 width, height = x2 - x1, y2 - y1
+
+                # Apply geometric filter (non-semantic noise reduction)
+                if not self._passes_geometric_filter(width, height, image_area):
+                    continue
 
                 # Add padding to capture full object
                 pad_x = int(width * self.crop_padding)

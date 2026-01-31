@@ -12,17 +12,7 @@ from clients.llm_client import LLMClient
 from pipelines.output import PipelineResult, ItemResult, make_result
 
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-# Fallback behavior when YOLO finds no detections:
-# - True: Use full image as single region (can contaminate comparison)
-# - False: Return empty items list (strict mode for fair comparison)
-USE_FALLBACK = False  # Disabled for fair dissertation experiment
-
-
-def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
+def run(image_path: str) -> PipelineResult:
     """
     Execute YOLO-World + LLM hybrid pipeline (Pipeline C).
 
@@ -31,38 +21,33 @@ def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
         2. LLM identifies food in each crop
         3. Results aggregated (deduplicated by name)
 
+    Fallback is DISABLED for experimental fairness.
+    If YOLO-World detects nothing, returns empty result.
+
     Args:
         image_path: Path to image file
-        use_fallback: If True, use full image when YOLO finds nothing
 
     Returns:
         PipelineResult with detected items and metadata
     """
     start_time = time.perf_counter()
-    fallback_used = False
 
-    # Step 1: YOLO-World region proposals
+    # Step 1: YOLO-World region proposals (semantic prompts)
     detector = YOLODetector()
     detections = detector.detect(image_path)
     detections_count = len(detections)
 
-    # Handle no detections
+    # Handle no detections (strict mode: return empty, NO fallback)
     if not detections:
-        if use_fallback:
-            # Fallback: use full image (logged for transparency)
-            detections = detector.get_full_image_fallback(image_path)
-            fallback_used = True
-        else:
-            # Strict mode: return empty
-            runtime_ms = (time.perf_counter() - start_time) * 1000
-            return make_result(
-                items=[],
-                pipeline="yolo-world",
-                image=Path(image_path).name,
-                runtime_ms=runtime_ms,
-                fallback_used=False,
-                detections_count=0
-            )
+        runtime_ms = (time.perf_counter() - start_time) * 1000
+        return make_result(
+            items=[],
+            pipeline="yolo-world",
+            image=Path(image_path).name,
+            runtime_ms=runtime_ms,
+            fallback_used=False,
+            detections_count=0
+        )
 
     # Step 2: LLM per crop
     llm = LLMClient()
@@ -83,7 +68,7 @@ def run(image_path: str, use_fallback: bool = USE_FALLBACK) -> PipelineResult:
         pipeline="yolo-world",
         image=Path(image_path).name,
         runtime_ms=runtime_ms,
-        fallback_used=fallback_used,
+        fallback_used=False,
         detections_count=detections_count
     )
 
