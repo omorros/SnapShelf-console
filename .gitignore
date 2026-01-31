@@ -28,14 +28,17 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+nul
 
-# YOLO models (large files - provide download instructions)
+# YOLO models (large files - auto-downloaded)
 *.pt
+
+# Experiment logs (generated during runs)
+logs/
 
 # Outputs (generated during testing)
 outputs/
 results/
-*.json
 
 # Jupyter
 .ipynb_checkpoints/
@@ -47,3 +50,6 @@ results/
 dist/
 build/
 *.egg-info/
+
+# Temporary files
+_warmup_temp.png

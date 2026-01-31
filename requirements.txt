@@ -1,16 +1,29 @@
 # Food Detection Pipeline Comparison - Dependencies
+# PINNED VERSIONS for reproducibility (dissertation artifact)
+# Generated: 2024-01-31
 
 # Object Detection (YOLO)
-ultralytics>=8.1.0
+# Using exact version to ensure consistent model behavior
+ultralytics==8.3.57
+
+# YOLO-World requires CLIP (auto-installed by ultralytics but pinning for reproducibility)
+# Note: This is installed from git, hash verified at install time
+git+https://github.com/ultralytics/CLIP.git@88ade288431a46233f1556d1e141901b3ef0a36b
 
 # LLM Integration (OpenAI Vision)
-openai>=1.12.0
+openai==1.59.9
 
 # Image Processing
-pillow>=10.2.0
+pillow==11.1.0
 
 # Terminal UI
-rich>=13.7.0
+rich==13.9.4
 
 # Environment Variables
-python-dotenv>=1.0.0
+python-dotenv==1.0.1
+
+# Reproducibility
+numpy==2.2.2
+
+# Logging
+structlog==24.4.0

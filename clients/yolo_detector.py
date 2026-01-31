@@ -1,96 +1,65 @@
 """
-YOLO-World detector module for open-vocabulary object detection.
-Uses YOLO-World for region proposals to be classified by LLM.
+YOLO-World detector module for open-vocabulary object detection (Pipeline C).
+
+Uses YOLO-World for region proposals with SEMANTIC food prompts.
+Returns cropped regions for LLM classification.
+
+EXPERIMENTAL DESIGN NOTE:
+This detector provides SEMANTIC pre-processing:
+- Uses fixed text prompts: ["food", "fruit", "vegetable", "packaged food"]
+- Only detects objects matching these food-related categories
+- Tests hypothesis: "Does FOOD-SPECIFIC region proposal help more than blind detection?"
+
+Compare with Pipeline B (class-agnostic YOLO) which uses STRUCTURAL pre-processing:
+- Detects any object regardless of class
+- Tests hypothesis: "Does ANY region proposal help the LLM?"
+
+PROMPTS ARE FIXED and NEVER CHANGE PER IMAGE - this is critical for experimental validity.
 """
 
 import os
 os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from PIL import Image
 from io import BytesIO
 from ultralytics import YOLOWorld
 
+from config import CONFIG, get_logger, Timer, PipelineLog
+
 
 # =============================================================================
-# YOLO-WORLD CONFIGURATION
-# Optimized for maximum recall in food detection scenarios
+# YOLO-WORLD DETECTOR (Singleton pattern for timing fairness)
 # =============================================================================
-
-# Confidence threshold (lower = more detections, higher recall)
-# 0.15 is aggressive to catch all potential food regions
-CONF_THRESHOLD = 0.15
-
-# IoU threshold for Non-Maximum Suppression
-IOU_THRESHOLD = 0.45
-
-# Maximum detections per image (reduced to limit noise)
-MAX_DETECTIONS = 8
-
-# Crop padding as percentage (captures context around objects)
-CROP_PADDING_PCT = 0.10
-
-# Open-vocabulary prompts for food detection
-# FIXED LIST - identical for all images, no dynamic changes
-# Semantic food categories only (no generic "object"/"item" to maintain
-# clear distinction from class-agnostic Pipeline B)
-DETECTION_PROMPTS = [
-    "food",
-    "fruit",
-    "vegetable",
-    "packaged food",
-]
-
-# =============================================================================
-# GEOMETRIC FILTERS (identical to Pipeline B for fair comparison)
-# =============================================================================
-
-# Minimum bounding box area as percentage of image area
-MIN_BBOX_AREA_PCT = 0.02  # 2% of image area
-
-# Aspect ratio constraints (width/height)
-MIN_ASPECT_RATIO = 0.2   # Not too tall/narrow
-MAX_ASPECT_RATIO = 5.0   # Not too wide/flat
-
-# =============================================================================
-
 
 class YOLODetector:
     """
     YOLO-World open-vocabulary detector for region proposals.
 
-    Uses text prompts to detect any object type without fine-tuning.
+    Uses text prompts to detect food-related objects.
     Returns cropped regions for LLM classification.
     Applies geometric filtering identical to Pipeline B for fair comparison.
+
+    Uses singleton pattern to avoid model loading during timed pipeline runs.
     """
 
-    def __init__(
-        self,
-        model_path: str = "yolov8s-worldv2.pt",
-        prompts: Optional[List[str]] = None,
-        conf_threshold: float = CONF_THRESHOLD,
-        iou_threshold: float = IOU_THRESHOLD,
-        max_detections: int = MAX_DETECTIONS,
-        crop_padding: float = CROP_PADDING_PCT,
-        min_bbox_area_pct: float = MIN_BBOX_AREA_PCT,
-        min_aspect_ratio: float = MIN_ASPECT_RATIO,
-        max_aspect_ratio: float = MAX_ASPECT_RATIO
-    ):
-        """
-        Initialize YOLO-World detector.
+    _instance: Optional["YOLODetector"] = None
+    _initialized: bool = False
 
-        Args:
-            model_path: YOLO-World model weights (auto-downloads if missing)
-            prompts: Custom detection prompts (defaults to DETECTION_PROMPTS)
-            conf_threshold: Detection confidence threshold (default 0.15)
-            iou_threshold: NMS IoU threshold (default 0.45)
-            max_detections: Max detections to return (default 8)
-            crop_padding: Padding percentage for crops (default 0.10)
-            min_bbox_area_pct: Minimum bbox area as % of image (default 0.02)
-            min_aspect_ratio: Minimum width/height ratio (default 0.2)
-            max_aspect_ratio: Maximum width/height ratio (default 5.0)
-        """
+    def __new__(cls) -> "YOLODetector":
+        """Singleton pattern - return existing instance if available."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        """Initialize YOLO-World model (only once)."""
+        if YOLODetector._initialized:
+            return
+
+        model_path = CONFIG.yolo_world_model
+
         # Resolve model path
         if Path(model_path).exists():
             resolved_path = model_path
@@ -105,20 +74,25 @@ class YOLODetector:
 
         # Load YOLO-World model
         self.model = YOLOWorld(resolved_path)
+        self.model_path = resolved_path
 
-        # Set detection prompts (open-vocabulary magic)
-        self.prompts = prompts or DETECTION_PROMPTS
+        # Set detection prompts (FIXED - never changes per image)
+        # This is critical for experimental validity
+        self.prompts = list(CONFIG.yolo_world_prompts)
         self.model.set_classes(self.prompts)
 
-        self.conf_threshold = conf_threshold
-        self.iou_threshold = iou_threshold
-        self.max_detections = max_detections
-        self.crop_padding = crop_padding
+        # Store config values (identical to Pipeline B for fair comparison)
+        self.conf_threshold = CONFIG.yolo_conf_threshold
+        self.iou_threshold = CONFIG.yolo_iou_threshold
+        self.max_detections = CONFIG.yolo_max_detections
+        self.crop_padding = CONFIG.yolo_crop_padding
 
         # Geometric filter parameters (identical to Pipeline B for fairness)
-        self.min_bbox_area_pct = min_bbox_area_pct
-        self.min_aspect_ratio = min_aspect_ratio
-        self.max_aspect_ratio = max_aspect_ratio
+        self.min_bbox_area_pct = CONFIG.min_bbox_area_pct
+        self.min_aspect_ratio = CONFIG.min_aspect_ratio
+        self.max_aspect_ratio = CONFIG.max_aspect_ratio
+
+        YOLODetector._initialized = True
 
     def _passes_geometric_filter(
         self, width: int, height: int, image_area: int
@@ -150,7 +124,7 @@ class YOLODetector:
 
         return True
 
-    def detect(self, image_path: str) -> List[dict]:
+    def detect(self, image_path: str) -> List[Dict[str, Any]]:
         """
         Detect objects and return cropped regions.
 
@@ -166,6 +140,9 @@ class YOLODetector:
                 - confidence: Detection confidence
                 - prompt_match: Which prompt triggered detection
         """
+        logger = get_logger()
+        image_name = Path(image_path).name
+
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
@@ -173,15 +150,17 @@ class YOLODetector:
         image_area = image.width * image.height
 
         # Run YOLO-World detection
-        results = self.model(
-            image,
-            conf=self.conf_threshold,
-            iou=self.iou_threshold,
-            max_det=self.max_detections,
-            verbose=False
-        )
+        with Timer("yolo_world_inference") as timer:
+            results = self.model(
+                image,
+                conf=self.conf_threshold,
+                iou=self.iou_threshold,
+                max_det=self.max_detections,
+                verbose=False
+            )
 
         detections = []
+        filtered_count = 0
 
         for result in results:
             for box in result.boxes:
@@ -195,20 +174,33 @@ class YOLODetector:
 
                 width, height = x2 - x1, y2 - y1
 
-                # Apply geometric filter (identical to Pipeline B for fairness)
-                if not self._passes_geometric_filter(width, height, image_area):
+                # Check geometric filter (identical to Pipeline B for fairness)
+                passes_filter = self._passes_geometric_filter(width, height, image_area)
+
+                # Log every detection (for analysis)
+                logger.log_detection(
+                    pipeline="yolo-world",
+                    image=image_name,
+                    bbox={"x": x1, "y": y1, "width": width, "height": height},
+                    confidence=conf,
+                    passed_filter=passes_filter,
+                    prompt_match=prompt_match
+                )
+
+                if not passes_filter:
+                    filtered_count += 1
                     continue
 
                 # Add padding to capture full object
                 pad_x = int(width * self.crop_padding)
                 pad_y = int(height * self.crop_padding)
-                x1 = max(0, x1 - pad_x)
-                y1 = max(0, y1 - pad_y)
-                x2 = min(image.width, x2 + pad_x)
-                y2 = min(image.height, y2 + pad_y)
+                x1_padded = max(0, x1 - pad_x)
+                y1_padded = max(0, y1 - pad_y)
+                x2_padded = min(image.width, x2 + pad_x)
+                y2_padded = min(image.height, y2 + pad_y)
 
                 # Crop the region
-                crop = image.crop((x1, y1, x2, y2))
+                crop = image.crop((x1_padded, y1_padded, x2_padded, y2_padded))
 
                 # Convert to bytes
                 buffer = BytesIO()
@@ -216,14 +208,48 @@ class YOLODetector:
 
                 detections.append({
                     "bbox": {
-                        "x": x1,
-                        "y": y1,
-                        "width": x2 - x1,
-                        "height": y2 - y1
+                        "x": x1_padded,
+                        "y": y1_padded,
+                        "width": x2_padded - x1_padded,
+                        "height": y2_padded - y1_padded
                     },
                     "image_bytes": buffer.getvalue(),
                     "confidence": conf,
                     "prompt_match": prompt_match
                 })
 
+        # Log summary
+        logger.log(PipelineLog(
+            pipeline="yolo-world",
+            image=image_name,
+            step="detection_complete",
+            duration_ms=timer.duration_ms,
+            details={
+                "total_raw_detections": len(results[0].boxes) if results else 0,
+                "filtered_out": filtered_count,
+                "final_detections": len(detections),
+                "prompts_used": self.prompts
+            }
+        ))
+
         return detections
+
+
+# =============================================================================
+# MODULE-LEVEL ACCESS (for timing fairness)
+# =============================================================================
+
+def get_yolo_world_detector() -> YOLODetector:
+    """
+    Get the singleton YOLO-World detector instance.
+    Use this to ensure model loading happens before timing starts.
+    """
+    return YOLODetector()
+
+
+def warmup_yolo_world():
+    """
+    Warm up the YOLO-World detector by loading the model.
+    Call this before timing measurements to exclude model loading time.
+    """
+    _ = get_yolo_world_detector()

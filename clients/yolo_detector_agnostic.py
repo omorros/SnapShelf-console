@@ -1,50 +1,35 @@
 """
 Class-agnostic YOLO detector for structural pre-processing (Pipeline B).
-Uses standard YOLOv8 (COCO-trained) with class labels ignored.
+
+Uses standard YOLOv8 (COCO-trained) with class labels IGNORED.
 All detections treated as generic "object" regions for LLM classification.
+
+EXPERIMENTAL DESIGN NOTE:
+This detector provides STRUCTURAL pre-processing only:
+- Detects any object that YOLO was trained on (80 COCO classes)
+- Class labels are intentionally discarded - only bounding boxes used
+- Tests hypothesis: "Does ANY region proposal help the LLM?"
+
+Compare with Pipeline C (YOLO-World) which uses SEMANTIC pre-processing:
+- Detects only food-related objects via text prompts
+- Tests hypothesis: "Does FOOD-SPECIFIC region proposal help more?"
 """
 
 import os
 os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Dict, Any
 from PIL import Image
 from io import BytesIO
 from ultralytics import YOLO
 
+from config import CONFIG, get_logger, Timer, PipelineLog
+
 
 # =============================================================================
-# CONFIGURATION (matching YOLO-World for fair comparison)
+# YOLO DETECTOR (Singleton pattern for timing fairness)
 # =============================================================================
-
-# Confidence threshold (lower = more detections, higher recall)
-CONF_THRESHOLD = 0.15
-
-# IoU threshold for Non-Maximum Suppression
-IOU_THRESHOLD = 0.45
-
-# Maximum detections per image (reduced to limit noise)
-MAX_DETECTIONS = 8
-
-# Crop padding as percentage (captures context around objects)
-CROP_PADDING_PCT = 0.10
-
-# =============================================================================
-# GEOMETRIC FILTERS (non-semantic noise reduction)
-# =============================================================================
-
-# Minimum bounding box area as percentage of image area
-# Filters out tiny detections (noise, distant objects)
-MIN_BBOX_AREA_PCT = 0.02  # 2% of image area
-
-# Aspect ratio constraints (width/height)
-# Filters out extremely elongated detections (edges, lines)
-MIN_ASPECT_RATIO = 0.2   # Not too tall/narrow
-MAX_ASPECT_RATIO = 5.0   # Not too wide/flat
-
-# =============================================================================
-
 
 class YOLODetectorAgnostic:
     """
@@ -53,32 +38,26 @@ class YOLODetectorAgnostic:
     Uses standard COCO-trained YOLOv8 but ignores class labels.
     Returns cropped regions for LLM classification (structural pre-processing only).
     Applies geometric filtering to reduce noise (no semantic reasoning).
+
+    Uses singleton pattern to avoid model loading during timed pipeline runs.
     """
 
-    def __init__(
-        self,
-        model_path: str = "yolov8s.pt",
-        conf_threshold: float = CONF_THRESHOLD,
-        iou_threshold: float = IOU_THRESHOLD,
-        max_detections: int = MAX_DETECTIONS,
-        crop_padding: float = CROP_PADDING_PCT,
-        min_bbox_area_pct: float = MIN_BBOX_AREA_PCT,
-        min_aspect_ratio: float = MIN_ASPECT_RATIO,
-        max_aspect_ratio: float = MAX_ASPECT_RATIO
-    ):
-        """
-        Initialize class-agnostic YOLOv8 detector.
+    _instance: Optional["YOLODetectorAgnostic"] = None
+    _initialized: bool = False
 
-        Args:
-            model_path: YOLOv8 model weights (auto-downloads if missing)
-            conf_threshold: Detection confidence threshold (default 0.15)
-            iou_threshold: NMS IoU threshold (default 0.45)
-            max_detections: Max detections to return (default 8)
-            crop_padding: Padding percentage for crops (default 0.10)
-            min_bbox_area_pct: Minimum bbox area as % of image (default 0.02)
-            min_aspect_ratio: Minimum width/height ratio (default 0.2)
-            max_aspect_ratio: Maximum width/height ratio (default 5.0)
-        """
+    def __new__(cls) -> "YOLODetectorAgnostic":
+        """Singleton pattern - return existing instance if available."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        """Initialize YOLOv8 model (only once)."""
+        if YOLODetectorAgnostic._initialized:
+            return
+
+        model_path = CONFIG.yolo_standard_model
+
         # Resolve model path
         if Path(model_path).exists():
             resolved_path = model_path
@@ -93,16 +72,20 @@ class YOLODetectorAgnostic:
 
         # Load standard YOLOv8 model (COCO-trained, 80 classes)
         self.model = YOLO(resolved_path)
+        self.model_path = resolved_path
 
-        self.conf_threshold = conf_threshold
-        self.iou_threshold = iou_threshold
-        self.max_detections = max_detections
-        self.crop_padding = crop_padding
+        # Store config values
+        self.conf_threshold = CONFIG.yolo_conf_threshold
+        self.iou_threshold = CONFIG.yolo_iou_threshold
+        self.max_detections = CONFIG.yolo_max_detections
+        self.crop_padding = CONFIG.yolo_crop_padding
 
         # Geometric filter parameters (non-semantic noise reduction)
-        self.min_bbox_area_pct = min_bbox_area_pct
-        self.min_aspect_ratio = min_aspect_ratio
-        self.max_aspect_ratio = max_aspect_ratio
+        self.min_bbox_area_pct = CONFIG.min_bbox_area_pct
+        self.min_aspect_ratio = CONFIG.min_aspect_ratio
+        self.max_aspect_ratio = CONFIG.max_aspect_ratio
+
+        YOLODetectorAgnostic._initialized = True
 
     def _passes_geometric_filter(
         self, width: int, height: int, image_area: int
@@ -133,7 +116,7 @@ class YOLODetectorAgnostic:
 
         return True
 
-    def detect(self, image_path: str) -> List[dict]:
+    def detect(self, image_path: str) -> List[Dict[str, Any]]:
         """
         Detect objects and return cropped regions (class labels ignored).
 
@@ -150,6 +133,9 @@ class YOLODetectorAgnostic:
                 - confidence: Detection confidence
                 - prompt_match: Always "object" (class-agnostic)
         """
+        logger = get_logger()
+        image_name = Path(image_path).name
+
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
@@ -157,15 +143,17 @@ class YOLODetectorAgnostic:
         image_area = image.width * image.height
 
         # Run YOLOv8 detection
-        results = self.model(
-            image,
-            conf=self.conf_threshold,
-            iou=self.iou_threshold,
-            max_det=self.max_detections,
-            verbose=False
-        )
+        with Timer("yolo_inference") as timer:
+            results = self.model(
+                image,
+                conf=self.conf_threshold,
+                iou=self.iou_threshold,
+                max_det=self.max_detections,
+                verbose=False
+            )
 
         detections = []
+        filtered_count = 0
 
         for result in results:
             for box in result.boxes:
@@ -178,20 +166,33 @@ class YOLODetectorAgnostic:
 
                 width, height = x2 - x1, y2 - y1
 
-                # Apply geometric filter (non-semantic noise reduction)
-                if not self._passes_geometric_filter(width, height, image_area):
+                # Check geometric filter
+                passes_filter = self._passes_geometric_filter(width, height, image_area)
+
+                # Log every detection (for analysis)
+                logger.log_detection(
+                    pipeline="yolo",
+                    image=image_name,
+                    bbox={"x": x1, "y": y1, "width": width, "height": height},
+                    confidence=conf,
+                    passed_filter=passes_filter,
+                    prompt_match="object"
+                )
+
+                if not passes_filter:
+                    filtered_count += 1
                     continue
 
                 # Add padding to capture full object
                 pad_x = int(width * self.crop_padding)
                 pad_y = int(height * self.crop_padding)
-                x1 = max(0, x1 - pad_x)
-                y1 = max(0, y1 - pad_y)
-                x2 = min(image.width, x2 + pad_x)
-                y2 = min(image.height, y2 + pad_y)
+                x1_padded = max(0, x1 - pad_x)
+                y1_padded = max(0, y1 - pad_y)
+                x2_padded = min(image.width, x2 + pad_x)
+                y2_padded = min(image.height, y2 + pad_y)
 
                 # Crop the region
-                crop = image.crop((x1, y1, x2, y2))
+                crop = image.crop((x1_padded, y1_padded, x2_padded, y2_padded))
 
                 # Convert to bytes
                 buffer = BytesIO()
@@ -199,14 +200,47 @@ class YOLODetectorAgnostic:
 
                 detections.append({
                     "bbox": {
-                        "x": x1,
-                        "y": y1,
-                        "width": x2 - x1,
-                        "height": y2 - y1
+                        "x": x1_padded,
+                        "y": y1_padded,
+                        "width": x2_padded - x1_padded,
+                        "height": y2_padded - y1_padded
                     },
                     "image_bytes": buffer.getvalue(),
                     "confidence": conf,
                     "prompt_match": "object"  # Class-agnostic: always "object"
                 })
 
+        # Log summary
+        logger.log(PipelineLog(
+            pipeline="yolo",
+            image=image_name,
+            step="detection_complete",
+            duration_ms=timer.duration_ms,
+            details={
+                "total_raw_detections": len(results[0].boxes) if results else 0,
+                "filtered_out": filtered_count,
+                "final_detections": len(detections)
+            }
+        ))
+
         return detections
+
+
+# =============================================================================
+# MODULE-LEVEL ACCESS (for timing fairness)
+# =============================================================================
+
+def get_yolo_agnostic_detector() -> YOLODetectorAgnostic:
+    """
+    Get the singleton YOLO detector instance.
+    Use this to ensure model loading happens before timing starts.
+    """
+    return YOLODetectorAgnostic()
+
+
+def warmup_yolo_agnostic():
+    """
+    Warm up the YOLO detector by loading the model.
+    Call this before timing measurements to exclude model loading time.
+    """
+    _ = get_yolo_agnostic_detector()

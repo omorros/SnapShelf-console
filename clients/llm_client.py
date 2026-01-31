@@ -1,36 +1,40 @@
 """
 LLM client module for OpenAI Vision API.
-Frozen prompts for fair research comparison.
+
+FROZEN PROMPTS AND SETTINGS for fair research comparison.
+
+EXPERIMENTAL DESIGN NOTE (Prompt Difference):
+- identify_all(): Used by Pipeline A for full images. Asks LLM to find ALL items
+  in a single image. Uses multi-target prompt with higher max_tokens (500).
+- identify_single(): Used by Pipelines B/C for cropped regions. Asks LLM to
+  identify ONE item per crop. Uses single-target prompt with lower max_tokens (150).
+
+This difference is INTENTIONAL and FAIR because:
+1. Pipeline A receives ONE full image and must enumerate all items
+2. Pipelines B/C receive MULTIPLE crops, each expected to contain ONE item
+3. The per-item cognitive task is equivalent; only the enumeration differs
+
+The max_tokens difference reflects expected output size:
+- Multi-item: {"items": [{...}, {...}, ...]} - needs more tokens
+- Single-item: {"is_food": true, "name": "...", "state": "..."} - needs fewer
 """
 
 import os
 import base64
 import json
-from typing import List, Optional
+import time
+from typing import List, Optional, Tuple
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from config import CONFIG, get_logger, Timer
 
 # Load environment variables
 load_dotenv()
 
 
 # =============================================================================
-# FROZEN SETTINGS - Locked for fair comparison
-# =============================================================================
-
-# Image detail level: "high" for both systems (fair comparison)
-# Options: "low" (faster, cheaper) or "high" (more accurate)
-IMAGE_DETAIL = "high"
-
-# Model: gpt-4o-mini for cost efficiency
-MODEL = "gpt-4o-mini"
-
-# Temperature: 0 for deterministic outputs
-TEMPERATURE = 0
-
-
-# =============================================================================
-# FROZEN PROMPTS - Same logic for both System A and System B
+# FROZEN PROMPTS - Locked for fair comparison
 # =============================================================================
 
 FROZEN_PROMPT_SINGLE = """Analyze this image. Identify the food item visible.
@@ -90,15 +94,46 @@ def normalize_item(item: dict) -> dict:
     return {"name": name, "state": state}
 
 
+def _clean_json(content: str) -> str:
+    """Remove markdown formatting if present."""
+    content = content.strip()
+    if content.startswith("```"):
+        lines = content.split("\n")
+        # Remove first line (```json) and last line (```)
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines)
+    return content.strip()
+
+
 # =============================================================================
-# LLM CLIENT
+# LLM CLIENT (Singleton pattern for efficiency)
 # =============================================================================
 
 class LLMClient:
-    """OpenAI Vision API client with frozen prompts and settings."""
+    """
+    OpenAI Vision API client with frozen prompts and settings.
+
+    Uses singleton pattern to avoid repeated client initialization,
+    which would bias timing measurements.
+    """
+
+    _instance: Optional["LLMClient"] = None
+    _initialized: bool = False
+
+    def __new__(cls) -> "LLMClient":
+        """Singleton pattern - return existing instance if available."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        """Initialize with API key from environment."""
+        """Initialize with API key from environment (only once)."""
+        if LLMClient._initialized:
+            return
+
         api_key = os.getenv("OPENAI_API_KEY")
 
         if not api_key:
@@ -113,97 +148,177 @@ class LLMClient:
             )
 
         self.client = OpenAI(api_key=api_key)
-        self.model = MODEL
-        self.detail = IMAGE_DETAIL
-        self.temperature = TEMPERATURE
+        self.model = CONFIG.llm_model
+        self.detail = CONFIG.llm_image_detail
+        self.temperature = CONFIG.llm_temperature
 
-    def identify_single(self, image_bytes: bytes) -> Optional[dict]:
+        LLMClient._initialized = True
+
+    def identify_single(
+        self,
+        image_bytes: bytes,
+        pipeline: str = "unknown",
+        image_name: str = "unknown",
+        crop_index: Optional[int] = None
+    ) -> Tuple[Optional[dict], float]:
         """
         Identify single food item from cropped image.
-        Used by System B (YOLO-LLM) for per-crop analysis.
+        Used by Pipeline B and C for per-crop analysis.
 
         Args:
             image_bytes: PNG image bytes
+            pipeline: Pipeline name for logging
+            image_name: Image filename for logging
+            crop_index: Crop index for logging
 
         Returns:
-            Normalized dict with name, state if food detected, None otherwise
+            Tuple of (normalized dict with name/state if food detected, None otherwise)
+            and duration in milliseconds
         """
+        logger = get_logger()
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": FROZEN_PROMPT_SINGLE},
-                        {"type": "image_url", "image_url": {
-                            "url": f"data:image/png;base64,{image_b64}",
-                            "detail": self.detail
-                        }}
-                    ]
-                }],
-                max_tokens=150,
-                temperature=self.temperature
-            )
+        raw_response = ""
+        parsed_result = None
+        error_msg = None
 
-            content = response.choices[0].message.content.strip()
-            content = self._clean_json(content)
-            result = json.loads(content)
+        with Timer("llm_single") as timer:
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": FROZEN_PROMPT_SINGLE},
+                            {"type": "image_url", "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}",
+                                "detail": self.detail
+                            }}
+                        ]
+                    }],
+                    max_tokens=CONFIG.llm_max_tokens_single,
+                    temperature=self.temperature
+                )
 
-            if result.get("is_food"):
-                return normalize_item(result)
-            return None
+                raw_response = response.choices[0].message.content.strip()
+                content = _clean_json(raw_response)
+                result = json.loads(content)
 
-        except Exception as e:
-            print(f"LLM Error: {e}")
-            return None
+                if result.get("is_food"):
+                    parsed_result = normalize_item(result)
+                else:
+                    parsed_result = None
 
-    def identify_all(self, image_bytes: bytes) -> List[dict]:
+            except json.JSONDecodeError as e:
+                error_msg = f"JSON parse error: {e}. Raw: {raw_response[:200]}"
+                parsed_result = None
+
+            except Exception as e:
+                error_msg = f"LLM API error: {type(e).__name__}: {e}"
+                parsed_result = None
+
+        # Log the call
+        logger.log_llm_call(
+            pipeline=pipeline,
+            image=image_name,
+            crop_index=crop_index,
+            raw_response=raw_response,
+            parsed_result=parsed_result,
+            duration_ms=timer.duration_ms,
+            error=error_msg
+        )
+
+        return parsed_result, timer.duration_ms
+
+    def identify_all(
+        self,
+        image_bytes: bytes,
+        pipeline: str = "llm",
+        image_name: str = "unknown"
+    ) -> Tuple[List[dict], float]:
         """
         Identify ALL food items in full image.
-        Used by System A (LLM-only).
+        Used by Pipeline A (LLM-only baseline).
 
         Args:
             image_bytes: PNG image bytes
+            pipeline: Pipeline name for logging
+            image_name: Image filename for logging
 
         Returns:
-            List of normalized dicts with name, state for each item
+            Tuple of (list of normalized dicts with name/state for each item)
+            and duration in milliseconds
         """
+        logger = get_logger()
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": FROZEN_PROMPT_MULTI},
-                        {"type": "image_url", "image_url": {
-                            "url": f"data:image/png;base64,{image_b64}",
-                            "detail": self.detail
-                        }}
-                    ]
-                }],
-                max_tokens=500,
-                temperature=self.temperature
-            )
+        raw_response = ""
+        parsed_result = []
+        error_msg = None
 
-            content = response.choices[0].message.content.strip()
-            content = self._clean_json(content)
-            result = json.loads(content)
+        with Timer("llm_multi") as timer:
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": FROZEN_PROMPT_MULTI},
+                            {"type": "image_url", "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}",
+                                "detail": self.detail
+                            }}
+                        ]
+                    }],
+                    max_tokens=CONFIG.llm_max_tokens_multi,
+                    temperature=self.temperature
+                )
 
-            items = result.get("items", [])
-            return [normalize_item(item) for item in items]
+                raw_response = response.choices[0].message.content.strip()
+                content = _clean_json(raw_response)
+                result = json.loads(content)
 
-        except Exception as e:
-            print(f"LLM Error: {e}")
-            return []
+                items = result.get("items", [])
+                parsed_result = [normalize_item(item) for item in items]
 
-    def _clean_json(self, content: str) -> str:
-        """Remove markdown formatting if present."""
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        return content.strip()
+            except json.JSONDecodeError as e:
+                error_msg = f"JSON parse error: {e}. Raw: {raw_response[:200]}"
+                parsed_result = []
+
+            except Exception as e:
+                error_msg = f"LLM API error: {type(e).__name__}: {e}"
+                parsed_result = []
+
+        # Log the call
+        logger.log_llm_call(
+            pipeline=pipeline,
+            image=image_name,
+            crop_index=None,
+            raw_response=raw_response,
+            parsed_result=parsed_result,
+            duration_ms=timer.duration_ms,
+            error=error_msg
+        )
+
+        return parsed_result, timer.duration_ms
+
+
+# =============================================================================
+# MODULE-LEVEL CLIENT (for timing fairness)
+# =============================================================================
+
+def get_llm_client() -> LLMClient:
+    """
+    Get the singleton LLM client instance.
+    Use this instead of LLMClient() to ensure initialization
+    happens before timing starts.
+    """
+    return LLMClient()
+
+
+def warmup_llm_client():
+    """
+    Warm up the LLM client by initializing it.
+    Call this before timing measurements to exclude init time.
+    """
+    _ = get_llm_client()

@@ -2,11 +2,18 @@
 Food Detection Pipeline Comparison
 Research tool comparing three vision pre-processing approaches for food recognition.
 
+EXPERIMENTAL DESIGN:
+- Pipeline A (llm): Raw image → LLM (baseline)
+- Pipeline B (yolo): Class-agnostic YOLO → crops → LLM (structural pre-processing)
+- Pipeline C (yolo-world): YOLO-World with food prompts → crops → LLM (semantic pre-processing)
+
 Usage:
     python main.py                           Interactive menu
     python main.py llm <image_path>          Pipeline A: LLM-only (baseline)
     python main.py yolo <image_path>         Pipeline B: Class-agnostic YOLO + LLM
     python main.py yolo-world <image_path>   Pipeline C: YOLO-World + LLM
+    python main.py --warmup                  Pre-load all models (for timing fairness)
+    python main.py --validate                Validate environment and config
 """
 
 import sys
@@ -20,6 +27,77 @@ from rich.table import Table
 from rich import box
 
 console = Console()
+
+
+# =============================================================================
+# MODEL WARMUP (for timing fairness)
+# =============================================================================
+
+def warmup_all_models():
+    """
+    Pre-load all models to exclude initialization from timing.
+    Call this before running experiments for fair comparison.
+    """
+    console.print("[cyan]Warming up models...[/cyan]")
+
+    with console.status("[cyan]Loading LLM client...[/cyan]"):
+        from clients.llm_client import warmup_llm_client
+        warmup_llm_client()
+        console.print("  [green][OK][/green] LLM client ready")
+
+    with console.status("[cyan]Loading YOLOv8 (class-agnostic)...[/cyan]"):
+        from clients.yolo_detector_agnostic import warmup_yolo_agnostic
+        warmup_yolo_agnostic()
+        console.print("  [green][OK][/green] YOLOv8 ready")
+
+    with console.status("[cyan]Loading YOLO-World...[/cyan]"):
+        from clients.yolo_detector import warmup_yolo_world
+        warmup_yolo_world()
+        console.print("  [green][OK][/green] YOLO-World ready")
+
+    console.print("[green]All models loaded.[/green]\n")
+
+
+# =============================================================================
+# ENVIRONMENT VALIDATION
+# =============================================================================
+
+def validate_environment():
+    """Validate environment and display configuration."""
+    from config import validate_environment as _validate, CONFIG
+
+    console.print("[cyan]Validating environment...[/cyan]\n")
+
+    result = _validate()
+
+    # Display config
+    table = Table(title="Experiment Configuration", box=box.ROUNDED)
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="white")
+
+    table.add_row("LLM Model", CONFIG.llm_model)
+    table.add_row("LLM Temperature", str(CONFIG.llm_temperature))
+    table.add_row("Image Detail", CONFIG.llm_image_detail)
+    table.add_row("YOLO Confidence", str(CONFIG.yolo_conf_threshold))
+    table.add_row("YOLO Max Detections", str(CONFIG.yolo_max_detections))
+    table.add_row("Random Seed", str(CONFIG.random_seed))
+    table.add_row("YOLO-World Prompts", ", ".join(CONFIG.yolo_world_prompts))
+
+    console.print(table)
+    console.print()
+
+    if result["valid"]:
+        console.print("[green][OK] Environment valid[/green]")
+    else:
+        console.print("[red][FAIL] Environment invalid[/red]")
+        for error in result["errors"]:
+            console.print(f"  [red]- {error}[/red]")
+
+    if result["warnings"]:
+        for warning in result["warnings"]:
+            console.print(f"  [yellow][WARN] {warning}[/yellow]")
+
+    return result["valid"]
 
 
 # =============================================================================
@@ -53,12 +131,28 @@ def run_pipeline(pipeline_type: str, image_path: str) -> dict:
 # CLI MODE
 # =============================================================================
 
-def cli_mode(pipeline: str, image_path: str):
+def cli_mode(pipeline: str, image_path: str, warmup: bool = True):
     """Run in CLI mode - output JSON to stdout."""
     # Validate image exists
     if not Path(image_path).exists():
         print(f"Error: File not found: {image_path}", file=sys.stderr)
         sys.exit(1)
+
+    # Initialize experiment (validates environment, sets seed)
+    from config import init_experiment
+    try:
+        init_experiment()
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Warmup models for fair timing (unless disabled)
+    if warmup:
+        # Suppress warmup output in CLI mode
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            warmup_all_models()
 
     # Run pipeline
     result = run_pipeline(pipeline, image_path)
@@ -98,7 +192,9 @@ def show_menu():
     menu.add_row("1.", "Pipeline A — LLM-only (baseline)")
     menu.add_row("2.", "Pipeline B — Class-agnostic YOLO + LLM")
     menu.add_row("3.", "Pipeline C — YOLO-World + LLM")
-    menu.add_row("4.", "Exit")
+    menu.add_row("4.", "Warmup models (for timing fairness)")
+    menu.add_row("5.", "Validate environment")
+    menu.add_row("6.", "Exit")
 
     console.print(menu)
     console.print()
@@ -142,6 +238,16 @@ def display_results(result: dict, pipeline_name: str):
     console.print(f"\n[bold]Image:[/bold] {meta.get('image', 'N/A')}")
     console.print(f"[bold]Pipeline:[/bold] {meta.get('pipeline', 'N/A')}")
     console.print(f"[bold]Runtime:[/bold] {meta.get('runtime_ms', 0):.0f} ms")
+
+    # Timing breakdown if available
+    timing = meta.get("timing_breakdown", {})
+    if timing:
+        console.print("\n[bold]Timing Breakdown:[/bold]")
+        for key, value in timing.items():
+            if isinstance(value, float):
+                console.print(f"  - {key}: {value:.2f} ms")
+            else:
+                console.print(f"  - {key}: {value}")
 
     if meta.get("pipeline") in ("yolo", "yolo-world"):
         fallback = meta.get("fallback_used", False)
@@ -220,16 +326,25 @@ def interactive_run_pipeline(pipeline_type: str):
 
 def interactive_mode():
     """Main interactive application loop."""
+    # Initialize experiment
+    from config import init_experiment
+    try:
+        init_experiment()
+    except RuntimeError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        console.print("[yellow]Please fix the above errors and try again.[/yellow]")
+        sys.exit(1)
+
     while True:
         clear_screen()
         show_header()
         show_menu()
 
-        choice = console.input("[bold green]Select option (1-4):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-6):[/bold green] ").strip()
 
         if choice == "1":
             console.print("\n[bold cyan]═══ Pipeline A: LLM-only ═══[/bold cyan]")
-            console.print("[dim]Sends full image to GPT-4o Vision for multi-item detection[/dim]\n")
+            console.print("[dim]Sends full image to GPT-4o-mini Vision for multi-item detection[/dim]\n")
             interactive_run_pipeline("llm")
 
         elif choice == "2":
@@ -243,11 +358,19 @@ def interactive_mode():
             interactive_run_pipeline("yolo-world")
 
         elif choice == "4":
+            console.print("\n[bold cyan]═══ Model Warmup ═══[/bold cyan]")
+            warmup_all_models()
+
+        elif choice == "5":
+            console.print("\n[bold cyan]═══ Environment Validation ═══[/bold cyan]")
+            validate_environment()
+
+        elif choice == "6":
             console.print("\n[cyan]Goodbye![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-4.[/red]")
+            console.print("[red]Invalid option. Please select 1-6.[/red]")
 
         # Pause before returning to menu
         console.print()
@@ -271,9 +394,24 @@ def main():
         interactive_mode()
 
     elif len(sys.argv) >= 2:
-        pipeline = sys.argv[1].lower()
+        arg = sys.argv[1].lower()
 
-        # Validate pipeline
+        # Special commands
+        if arg == "--warmup":
+            from config import init_experiment
+            init_experiment()
+            warmup_all_models()
+            return
+
+        if arg == "--validate":
+            valid = validate_environment()
+            sys.exit(0 if valid else 1)
+
+        if arg in ("--help", "-h"):
+            print_usage()
+
+        # Pipeline commands
+        pipeline = arg
         if pipeline not in ("llm", "yolo", "yolo-world"):
             print(f"Error: Unknown pipeline '{pipeline}'", file=sys.stderr)
             print("Use 'llm', 'yolo', or 'yolo-world'", file=sys.stderr)
