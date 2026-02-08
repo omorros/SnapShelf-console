@@ -1,4 +1,4 @@
-# SnapShelf
+# vlm-pipeline-comparison
 
 **A Comparative Study of Vision Pre-Processing Approaches for LLM-Based Food Recognition**
 
@@ -185,7 +185,7 @@ Pipelines B and C aggregate multiple LLM responses (one per detected region). Re
 ```bash
 # 1. Clone repository
 git clone <repository-url>
-cd SnapShelf-console
+cd vlm-pipeline-comparison
 
 # 2. Create virtual environment
 python -m venv venv
@@ -414,7 +414,7 @@ structlog==24.4.0
 ## Project Structure
 
 ```
-SnapShelf-console/
+vlm-pipeline-comparison/
 │
 ├── main.py                           # CLI and interactive entry point
 ├── config.py                         # Frozen experiment configuration

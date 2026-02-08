@@ -1,5 +1,5 @@
 """
-External integration clients for SnapShelf.
+External integration clients for vlm-pipeline-comparison.
 
 Contains:
 - LLMClient: OpenAI Vision API client with frozen prompts
