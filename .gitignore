@@ -1,5 +1,5 @@
 # =============================================================================
-# Git Ignore - Food Detection Pipeline Comparison
+# Git Ignore - Experiment 2: End-to-End Pipeline Comparison
 # =============================================================================
 
 # Python
@@ -30,15 +30,22 @@ ENV/
 Thumbs.db
 nul
 
-# YOLO models (large files - auto-downloaded)
+# Dataset (large, user-provided)
+dataset/
+dataset_objectness/
+
+# Model weights (large binary files)
+weights/
 *.pt
+*.pth
 
-# Experiment logs (generated during runs)
+# YOLO training runs
+runs/
+
+# Experiment outputs (generated during runs)
 logs/
-
-# Outputs (generated during testing)
-outputs/
 results/
+outputs/
 
 # Jupyter
 .ipynb_checkpoints/
