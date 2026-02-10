@@ -1,0 +1,26 @@
+# YOLOv8 data config for 1-class objectness detection
+# Used by Pipeline C: YOLO objectness + CNN classifier
+#
+# Same bounding boxes as yolo_14class.yaml, but all class IDs remapped to 0.
+# Run training/prepare_objectness_labels.py to generate the remapped labels.
+#
+# Dataset structure expected:
+#   dataset_objectness/
+#     train/
+#       images/   *.jpg  (symlinked or same as 14-class)
+#       labels/   *.txt  (remapped: all class_id = 0)
+#     val/
+#       images/
+#       labels/
+#     test/
+#       images/
+#       labels/
+
+path: ../dataset_objectness
+train: train/images
+val: val/images
+test: test/images
+
+nc: 1
+names:
+  0: object

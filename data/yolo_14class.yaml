@@ -1,0 +1,36 @@
+# YOLOv8 data config for 14-class fruit/vegetable detection
+# Used by Pipeline B: YOLO end-to-end
+#
+# Dataset structure expected:
+#   dataset/
+#     train/
+#       images/   *.jpg
+#       labels/   *.txt
+#     val/
+#       images/   *.jpg
+#       labels/   *.txt
+#     test/
+#       images/   *.jpg
+#       labels/   *.txt
+
+path: ../dataset
+train: train/images
+val: val/images
+test: test/images
+
+nc: 14
+names:
+  0: apple
+  1: banana
+  2: bell_pepper_green
+  3: bell_pepper_red
+  4: carrot
+  5: cucumber
+  6: grape
+  7: lemon
+  8: onion
+  9: orange
+  10: peach
+  11: potato
+  12: strawberry
+  13: tomato
