@@ -1,23 +1,17 @@
 """
-Pipeline modules for food detection comparison.
+Pipeline modules for Experiment 2: End-to-End Pipeline Comparison.
 
-This package contains three pipelines for comparing vision pre-processing approaches:
-- Pipeline A (llm_pipeline): Raw image -> LLM (baseline)
-- Pipeline B (yolo_agnostic_pipeline): Class-agnostic YOLO -> crops -> LLM
-- Pipeline C (yolo_world_pipeline): YOLO-World with food prompts -> crops -> LLM
+Three fundamentally different end-to-end pipelines for 14-class inventory:
+- Pipeline A (vlm_pipeline):      VLM-only (GPT-4o-mini constrained to 14 labels)
+- Pipeline B (yolo_pipeline):     YOLO end-to-end (14-class YOLO)
+- Pipeline C (yolo_cnn_pipeline): YOLO + CNN (objectness YOLO -> crops -> CNN)
 
-EXPERIMENTAL DESIGN NOTE:
-Pipelines B and C use intentionally different detection strategies:
-- B: Structural pre-processing only (any detected object becomes a crop)
-- C: Semantic pre-processing (only food-related detections become crops)
-
-This tests two hypotheses:
-1. Does ANY region proposal help the LLM? (A vs B)
-2. Does SEMANTIC region proposal help more than blind proposal? (B vs C)
+Key: Pipelines B and C use NO LLM calls.
+Comparison: VLM vs. pure detection vs. detect-then-classify.
 """
 
-from pipelines import llm_pipeline
-from pipelines import yolo_agnostic_pipeline
-from pipelines import yolo_world_pipeline
+from pipelines import vlm_pipeline
+from pipelines import yolo_pipeline
+from pipelines import yolo_cnn_pipeline
 
-__all__ = ["llm_pipeline", "yolo_agnostic_pipeline", "yolo_world_pipeline"]
+__all__ = ["vlm_pipeline", "yolo_pipeline", "yolo_cnn_pipeline"]

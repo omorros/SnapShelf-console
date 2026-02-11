@@ -2,84 +2,74 @@
 Shared output schema for pipeline results.
 
 FROZEN SCHEMA for fair research comparison.
-All pipelines must output in this exact format for valid comparison.
+All pipelines output Inventory = Dict[str, int] (class -> count).
 """
 
-from typing import List, TypedDict, Optional, Dict, Any
+from typing import Dict, TypedDict, Optional, Any
 
 
-class ItemResult(TypedDict):
-    """Single detected food item."""
-    name: str  # Generic name (lowercase, normalized)
-    state: str  # fresh | packaged | cooked | unknown
+# Universal output type: class name -> count
+Inventory = Dict[str, int]  # e.g. {"apple": 3, "banana": 1, "tomato": 2}
 
 
 class TimingBreakdown(TypedDict, total=False):
     """Detailed timing information for analysis."""
-    image_load_ms: float  # Time to load and convert image (Pipeline A)
-    detection_ms: float  # Time for YOLO detection (Pipeline B/C)
-    llm_inference_ms: float  # Total LLM time (Pipeline A - single call)
-    llm_total_ms: float  # Total LLM time (Pipeline B/C - all crops)
-    llm_avg_ms: float  # Average LLM time per crop (Pipeline B/C)
-    llm_calls: int  # Number of LLM API calls
+    total_ms: float
+    detection_ms: float          # YOLO inference (Pipelines B/C)
+    classification_ms: float     # CNN inference (Pipeline C) or VLM call (Pipeline A)
+    vlm_call_ms: float           # VLM API call time (Pipeline A only)
 
 
 class PipelineMeta(TypedDict, total=False):
     """Pipeline execution metadata."""
-    pipeline: str  # "llm" | "yolo" | "yolo-world"
-    image: str  # Filename
-    runtime_ms: float  # Total execution time in milliseconds
-    timing_breakdown: TimingBreakdown  # Detailed timing for analysis
-    fallback_used: bool  # True if YOLO fallback was triggered (Pipeline B/C only)
-    detections_count: int  # Number of YOLO detections (Pipeline B/C only)
+    pipeline: str             # "vlm" | "yolo-14" | "yolo-cnn"
+    image: str                # Filename
+    runtime_ms: float         # Total execution time in milliseconds
+    timing_breakdown: TimingBreakdown
+    detections_count: int     # Number of YOLO detections (Pipeline B/C)
 
 
 class PipelineResult(TypedDict):
     """Standard output schema for all pipelines."""
-    items: List[ItemResult]
+    inventory: Inventory
     meta: PipelineMeta
 
 
 def make_result(
-    items: List[ItemResult],
+    inventory: Inventory,
     pipeline: str,
     image: str,
     runtime_ms: float,
     timing_breakdown: Optional[Dict[str, Any]] = None,
-    fallback_used: bool = False,
     detections_count: Optional[int] = None
 ) -> PipelineResult:
     """
     Create standardized pipeline result.
 
     Args:
-        items: List of detected items
-        pipeline: "llm" | "yolo" | "yolo-world"
-        image: Image filename
-        runtime_ms: Total execution time in milliseconds
-        timing_breakdown: Detailed timing for analysis
-        fallback_used: Whether YOLO fallback was triggered
-        detections_count: Number of YOLO detections (Pipeline B/C only)
+        inventory: Dict mapping class name -> count.
+        pipeline: "vlm" | "yolo-14" | "yolo-cnn"
+        image: Image filename.
+        runtime_ms: Total execution time in milliseconds.
+        timing_breakdown: Detailed timing for analysis.
+        detections_count: Number of YOLO detections (Pipeline B/C).
 
     Returns:
-        PipelineResult dict
+        PipelineResult dict.
     """
     meta: PipelineMeta = {
         "pipeline": pipeline,
         "image": image,
         "runtime_ms": round(runtime_ms, 2),
-        "fallback_used": fallback_used
     }
 
-    # Include timing breakdown if provided
     if timing_breakdown:
         meta["timing_breakdown"] = timing_breakdown
 
-    # Only include detections_count for YOLO pipelines
     if detections_count is not None:
         meta["detections_count"] = detections_count
 
     return {
-        "items": items,
+        "inventory": inventory,
         "meta": meta
     }
