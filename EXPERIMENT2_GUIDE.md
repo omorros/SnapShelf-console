@@ -23,6 +23,37 @@
 
 ## 1. Why You Need Separate Data (The Fairness Problem)
 
+### How YOLO actually learns (the big picture)
+
+YOLO learning happens in two completely separate phases:
+
+**Phase 1 — Training (the textbook).** You show YOLO thousands of images with
+bounding boxes already drawn and say "this is an apple, this is a banana." YOLO
+adjusts its internal weights until it learns visual patterns: "round + red =
+apple", "yellow + elongated = banana." After training, YOLO has never seen your
+real-world test photos — it only studied the textbook.
+
+**Phase 2 — Testing (the exam).** You show YOLO images it has **never seen
+before** and ask "what do you see?" You compare its answers to the correct
+answers (your annotations) to measure how good it really is.
+
+This means you need **two different sets of images** that do **two different
+jobs:**
+
+| Step | Which images? | Who draws the bounding boxes? | Purpose |
+|------|--------------|------------------------------|---------|
+| Training | Public Kaggle dataset (~15,000 images) | **Already done for you** — the dataset comes pre-annotated | Teach YOLO what fruits and vegetables look like |
+| Testing | Your 120 original photos | **You** annotate them in Roboflow (Section 5) | Measure how well YOLO performs on images it has never seen |
+
+Think of it like a driving test:
+- **Training** = the practice routes you drive during lessons (Kaggle dataset)
+- **Testing** = the route the examiner picks on test day — one you've never driven before (your 120 photos)
+- **Answer key** = the examiner's clipboard with the correct turns (your Roboflow annotations)
+
+If YOLO passes the exam (performs well on your 120 unseen photos), you can
+trust it will also handle future unseen photos in the real app. If you let it
+cheat by testing on training images, a 99% score tells you nothing.
+
 ### The core rule
 
 > **Never test on data the model saw during training.**
@@ -51,12 +82,13 @@ CNN) ever saw those images during training.
 
 You photographed 120 images for testing. You need *different* images for
 training YOLO. Rather than photographing hundreds more images yourself, you
-download a large public fruit/vegetable dataset that already has bounding-box
-annotations. This gives you:
+download a large public fruit/vegetable dataset that **already has bounding-box
+annotations** — no Roboflow work needed for training data. This gives you:
 
 - **Volume:** Thousands of labelled images (vs. your 120)
 - **Separation:** Zero overlap with your test set
 - **Reproducibility:** Anyone can download the same dataset and replicate your results
+- **No extra annotation work:** The bounding boxes are included in the download
 
 ### Dissertation justification (adapt for your methodology chapter)
 
