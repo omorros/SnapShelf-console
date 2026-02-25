@@ -124,8 +124,8 @@ Good natural lighting (near a window if possible). All items unpackaged.
 | 019 | TD | CUC, GPP, CAR, TOM, ONI, POT, RPP | 7 | [CG][RT][PI] | Dense veg arrangement |
 | 020 | 45 | APP, BAN, ORA×2, GRA, STR, PEA, LEM | 8 | [PO][LO] | Items overlapping slightly |
 | 021 | 45 | TOM, APP, RPP, GPP, CUC, ONI, CAR, POT | 8 | [TA][CG][RT][PI] | All different, crowded |
-| 022 | SD | BAN×2, STR, GRA, PEA, ORA, LEM, APP | 8 | [PO][LO][TA] | 2 bananas separated, fruit pile |
-| 023 | SD | ONI×2, POT, CAR, CUC, GPP, RPP, TOM | 8 | [CG][RT][PI] | Veg heavy, 2 onions together |
+| 022 | SD | BAN, STR, GRA, PEA, ORA, LEM, APP | 7 | [PO][LO][TA] | 1 banana (not 2), fruit pile |
+| 023 | SD | ONI×2, POT, CAR, GPP, RPP, TOM | 7 | [RT][PI] | Veg heavy, 2 onions together, no cucumber |
 | 024 | SD | APP, BAN, ORA, PEA, STR×2, GRA, CAR | 8 | [PO] | 2 strawberries among fruit |
 
 ---
