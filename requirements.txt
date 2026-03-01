@@ -4,8 +4,10 @@
 # Object Detection (YOLO)
 ultralytics==8.3.57
 
-# LLM Integration (OpenAI Vision) — Pipeline A only
-openai==1.59.9
+# VLM Integration — Pipeline A (VLM comparison)
+openai>=1.59.9
+anthropic>=0.40.0
+google-genai>=1.0.0
 
 # Deep Learning (CNN classifier, Pipeline C)
 torch>=2.1.0
