@@ -154,13 +154,24 @@ Before running the 12-run pipeline comparison, we needed to determine which VLM 
 
 All three models received the **identical frozen prompt** constrained to the 14 target classes. Temperature was set to 0.0 for all. Each model processed all 120 test images.
 
-### Results
+### Results — Single Run on 120 Test Images (Same Conditions)
 
-| Model | Precision | Recall | **F1** | Avg Latency | Errors |
-|-------|-----------|--------|--------|-------------|--------|
-| **Gemini 3.1 Pro** | 0.8291 | 0.9949 | **0.9044** | 9,003 ms | 0/120 |
-| GPT-5.2 | 0.8220 | 0.9949 | 0.9002 | 3,687 ms | 0/120 |
-| Claude Opus 4.6 | 0.7688 | 0.9949 | 0.8674 | 4,724 ms | 0/120 |
+| | **Gemini 3.1 Pro** | **GPT-5.2** | **Claude Opus 4.6** |
+|---|:---:|:---:|:---:|
+| **Provider** | Google | OpenAI | Anthropic |
+| **F1 Score** | **0.9044** | 0.9002 | 0.8674 |
+| **Precision** | 0.8291 | 0.8220 | 0.7688 |
+| **Recall** | 0.9949 | 0.9949 | 0.9949 |
+| **Avg Latency** | 9,003 ms | **3,687 ms** | 4,724 ms |
+| **Total Time (120 imgs)** | ~18 min | **~7.4 min** | ~9.4 min |
+| **Cost per Run (120 imgs)** | ~$1.17 | **~$0.44** | ~$1.23 |
+| **Cost per Image** | ~$0.010 | **~$0.004** | ~$0.010 |
+| **Errors** | 0/120 | 0/120 | 0/120 |
+
+> **Winner by accuracy:** Gemini 3.1 Pro (F1 = 0.9044)
+> **Winner by speed:** GPT-5.2 (2.4x faster)
+> **Winner by cost:** GPT-5.2 (2.7x cheaper)
+> **For comparison — YOLO pipelines (B & C):** <100 ms/image, $0.00/run, fully offline
 
 ### Key Observations
 
@@ -189,6 +200,38 @@ All three models received the **identical frozen prompt** constrained to the 14 
 | potato | 1.000 | 1.000 | 1.000 | Perfect |
 | strawberry | 1.000 | 1.000 | 1.000 | Perfect |
 | tomato | 1.000 | 1.000 | 1.000 | Perfect |
+
+### API Costs
+
+**Per-token pricing (as of March 2026):**
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|----------------------:|------------------------:|
+| GPT-5.2 | $1.75 | $14.00 |
+| Claude Opus 4.6 | $5.00 | $25.00 |
+| Gemini 3.1 Pro | $2.00 | $12.00* |
+
+*\*Gemini output pricing includes thinking tokens (~579 per image), which are billed as output but not visible in the response.*
+
+**Measured cost for the VLM comparison (120 test images, from billing dashboards):**
+
+| Model | Input Tokens | Output Tokens | Total Cost | Cost per Image |
+|-------|-------------:|--------------:|-----------:|---------------:|
+| GPT-5.2 | 237,990 | included | **$0.45** | **$0.004** |
+| Claude Opus 4.6 | 498,213 | 10,619 | **$2.76** | **$0.012** |
+| Gemini 3.1 Pro | ~150,000 | ~72,840* | **~$1.17** | **~$0.010** |
+
+*GPT-5.2 and Claude costs are actual figures from the OpenAI and Anthropic billing dashboards. Claude's total is higher because the comparison required multiple runs to resolve a 5 MB image size limit (the per-image cost for a single clean run is ~$0.012). Gemini cost is estimated from measured token usage (1,250 input + 607 output tokens per image). GPT-5.2 token count (237,990) includes 2 additional test calls beyond the 120 images.*
+
+**Projected cost for the full 12-run experiment:**
+
+| Component | API Calls | Est. Cost |
+|-----------|:---------:|----------:|
+| VLM comparison (3 models × 120 images) | 360 | ~$4.38 |
+| Pipeline A in 12-run matrix (Gemini × 4 conditions × 120 images) | 480 | ~$4.68 |
+| **Total VLM API cost** | **840** | **~$9.06** |
+
+Pipelines B and C are fully offline — **zero API cost**. This is a significant advantage at scale: processing 10,000 images/day would cost ~$100/day with Gemini vs. $0 with YOLO.
 
 ### How to Run the VLM Comparison
 
@@ -847,6 +890,10 @@ Ready-to-adapt paragraphs for your dissertation report:
 ### Grape Class Discussion
 
 > *"A notable finding was the consistent over-prediction of the grape class across all three VLMs. Ground truth annotations treated one grape cluster as a single unit, whereas VLMs counted individual grape berries within each cluster, reporting 4–6 items per cluster. This semantic ambiguity — what constitutes 'one grape' — is not a model error but a fundamental challenge in count-based evaluation: the annotation convention and the model's interpretation of a 'unit' may diverge. When the grape class is excluded, all three VLMs achieve F1 scores above 0.98, suggesting the approach is highly effective for unambiguously defined items."*
+
+### Cost and Latency Trade-Offs
+
+> *"API costs and inference latency were recorded for all three VLMs. GPT-5.2 was the fastest (3.7 s/image) and cheapest ($0.004/image), while Gemini 3.1 Pro was the slowest (9.0 s/image) and most expensive ($0.010/image) due to internal thinking tokens billed as output. Claude Opus 4.6 occupied the middle ground (4.7 s/image, $0.012/image). The total API cost for the VLM comparison across all three models on 120 images was $4.38. Pipelines B and C, being fully offline, incurred zero API cost and sub-100 ms inference on GPU, making them significantly cheaper at scale. For a production deployment processing 10,000 images/day, Pipeline A (Gemini) would cost approximately $100/day versus $0 for the YOLO-based pipelines, plus the added latency of network round-trips."*
 
 ### Limitations
 
