@@ -109,13 +109,14 @@ annotations** — no Roboflow work needed for training data. This gives you:
 
 ### Which dataset
 
-**Fruits-And-Vegetables-Detection-Dataset** on Kaggle.
+**LVIS Fruits And Vegetables Detection Dataset** — 63 classes, YOLO format.
 
-URL: `https://www.kaggle.com/datasets/ajaygorkar/fruits-and-vegetables-detection-dataset`
+- GitHub: `https://github.com/henningheyen/Fruits-And-Vegetables-Detection-Dataset`
+- Kaggle: `https://www.kaggle.com/datasets/henningheyen/lvis-fruits-and-vegetables-dataset`
 
-This dataset contains **~15,000 images** with YOLO-format bounding-box
-annotations across **63 classes** of fruits and vegetables. It already includes
-train/val/test splits.
+This dataset contains **~8,200 images** with YOLO-format bounding-box
+annotations across **63 classes** of fruits and vegetables. It includes
+train/val splits (6,721 train + 1,500 val).
 
 ### How to download
 
