@@ -7,11 +7,13 @@ all 14 class names and instructs the model to count precisely.
 
 import os
 import base64
+import io
 import json
 from pathlib import Path
 from typing import Dict
 
 import anthropic
+from PIL import Image
 
 from config import CLASSES
 
@@ -47,16 +49,47 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
+MAX_BASE64_BYTES = 5_242_880  # Anthropic 5 MB limit
+
+
 def _encode_image(image_path: str) -> tuple[str, str]:
-    """Return (base64_data, media_type) for the image."""
+    """Return (base64_data, media_type) for the image, resizing if > 5 MB."""
     path = Path(image_path)
-    suffix = path.suffix.lower()
-    media_type = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".webp": "image/webp",
-    }.get(suffix, "image/jpeg")
-    data = base64.b64encode(path.read_bytes()).decode("utf-8")
-    return data, media_type
+    raw = path.read_bytes()
+    b64 = base64.b64encode(raw).decode("utf-8")
+
+    if len(b64) <= MAX_BASE64_BYTES:
+        suffix = path.suffix.lower()
+        media_type = {
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".webp": "image/webp",
+        }.get(suffix, "image/jpeg")
+        return b64, media_type
+
+    # Image too large — re-encode as JPEG with reduced quality / size
+    img = Image.open(path)
+    img = img.convert("RGB")
+
+    for quality in (85, 70, 50):
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        if len(b64) <= MAX_BASE64_BYTES:
+            return b64, "image/jpeg"
+
+    # Still too large — scale down
+    scale = 0.75
+    while scale > 0.2:
+        new_size = (int(img.width * scale), int(img.height * scale))
+        resized = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        resized.save(buf, format="JPEG", quality=70)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        if len(b64) <= MAX_BASE64_BYTES:
+            return b64, "image/jpeg"
+        scale -= 0.1
+
+    return b64, "image/jpeg"
 
 
 def identify(image_path: str) -> Dict[str, int]:
