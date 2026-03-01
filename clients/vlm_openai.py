@@ -66,7 +66,7 @@ def identify(image_path: str) -> Dict[str, int]:
     response = client.chat.completions.create(
         model=MODEL,
         temperature=0.0,
-        max_tokens=500,
+        max_completion_tokens=500,
         messages=[
             {
                 "role": "user",
