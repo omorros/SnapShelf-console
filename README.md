@@ -134,7 +134,7 @@ A two-stage approach that separates **detection** from **classification**. An ob
 | Original VLM Client | `clients/vlm_client.py` | GPT-4o-mini (baseline reference) |
 | 14-Class YOLO | `clients/yolo_detector.py` | `weights/yolo_14class_best.pt` |
 | Objectness YOLO | `clients/yolo_objectness.py` | `weights/yolo_objectness_best.pt` |
-| CNN Classifier | `clients/cnn_classifier.py` | `weights/cnn_winner.pth` (EfficientNet-B0) |
+| CNN Classifier | `clients/cnn_classifier.py` | `weights/cnn_winner.keras` (EfficientNet-B0) |
 
 ---
 
@@ -395,9 +395,9 @@ In a real mobile app, images will not always be perfect. Users may have shaky ha
 
 | ID | Degradation | Parameters | Simulates |
 |:--:|-------------|-----------|-----------|
-| D1 | **Gaussian blur** | kernel=7, sigma=3.0 | Out-of-focus camera, shaky hands |
-| D2 | **Gaussian noise** | mean=0, sigma=25 | Low-light sensor noise (grainy photo) |
-| D3 | **JPEG compression** | quality=15 | Messaging app compression (WhatsApp, etc.) |
+| D1 | **Gaussian blur** | kernel=15, sigma=6.0 | Out-of-focus camera, shaky hands |
+| D2 | **Gaussian noise** | mean=0, sigma=50 | Low-light sensor noise (grainy photo) |
+| D3 | **JPEG compression** | quality=5 | Messaging app compression (WhatsApp, etc.) |
 
 These cover the three principal sources of image quality loss in a mobile workflow: **optical** (blur), **sensor** (noise), and **compression** (JPEG artifacts).
 
@@ -563,7 +563,7 @@ ls weights/yolo_14class_best.pt       # 14-class YOLO (Pipeline B)
 ls weights/yolo_objectness_best.pt    # Objectness YOLO (Pipeline C)
 
 # Copy CNN weights from Experiment 1
-cp /path/to/experiment1/best_efficientnet.pth weights/cnn_winner.pth
+cp /path/to/experiment1/best_efficientnet.pth weights/cnn_winner.keras
 
 # Smoke test
 python main.py yolo-14 dataset_exp2/images/IMG_001.jpg
@@ -631,7 +631,7 @@ Before running, verify everything is in place:
 # Weight files
 ls weights/yolo_14class_best.pt        # Pipeline B
 ls weights/yolo_objectness_best.pt     # Pipeline C
-ls weights/cnn_winner.pth              # Pipeline C (CNN)
+ls weights/cnn_winner.keras              # Pipeline C (CNN)
 
 # API key (Pipeline A)
 echo $OPENAI_API_KEY                   # Should print your key
@@ -853,7 +853,7 @@ SnapShelf-console/
 ├── weights/                          # Trained model weights (gitignored)
 │   ├── yolo_14class_best.pt         # Pipeline B
 │   ├── yolo_objectness_best.pt      # Pipeline C (detection)
-│   └── cnn_winner.pth               # Pipeline C (classification)
+│   └── cnn_winner.keras               # Pipeline C (classification)
 │
 ├── results/                          # Evaluation outputs (gitignored)
 │   ├── vlm_comparison/              # 3-model VLM comparison results
@@ -885,7 +885,7 @@ Ready-to-adapt paragraphs for your dissertation report:
 
 ### Robustness Evaluation
 
-> *"To assess robustness, three image degradations were applied to the test set: Gaussian blur (kernel=7, sigma=3.0, simulating an out-of-focus camera), additive Gaussian noise (sigma=25, simulating low-light sensor noise), and JPEG compression at quality level 15 (simulating lossy transmission through messaging applications). Each pipeline was evaluated on all four conditions (clean plus three degraded), yielding 12 evaluation runs. Ground truth annotations were shared across all conditions, as degradation does not alter object locations."*
+> *"To assess robustness, three image degradations were applied to the test set: Gaussian blur (kernel=15, sigma=6.0, simulating an out-of-focus camera), additive Gaussian noise (sigma=50, simulating low-light sensor noise), and JPEG compression at quality level 5 (simulating lossy transmission through messaging applications). Each pipeline was evaluated on all four conditions (clean plus three degraded), yielding 12 evaluation runs. Ground truth annotations were shared across all conditions, as degradation does not alter object locations."*
 
 ### Grape Class Discussion
 

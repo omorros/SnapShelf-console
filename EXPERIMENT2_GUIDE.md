@@ -597,7 +597,7 @@ the crops extracted by the objectness YOLO. You need to copy the trained weights
 The CNN from Experiment 1 should be saved as a `.pth` file. Copy it to:
 
 ```bash
-cp /path/to/experiment1/best_efficientnet.pth weights/cnn_winner.pth
+cp /path/to/experiment1/efficientnet_model.keras weights/cnn_winner.keras
 ```
 
 ### 7.2 Verify config.py settings
@@ -606,7 +606,7 @@ Open `config.py` and confirm these settings match your setup:
 
 ```python
 cnn_model_name: str = "efficientnet"   # Must match the architecture you trained
-cnn_weights: str = "weights/cnn_winner.pth"
+cnn_weights: str = "weights/cnn_winner.keras"
 cnn_img_size: int = 224                # EfficientNet-B0 default
 cnn_crop_padding: float = 0.10         # 10% context padding around crops
 ```
@@ -615,7 +615,7 @@ cnn_crop_padding: float = 0.10         # 10% context padding around crops
 
 ```bash
 # Verify the file exists and has reasonable size (~20 MB for EfficientNet-B0)
-ls -lh weights/cnn_winner.pth
+ls -lh weights/cnn_winner.keras
 
 # Run a smoke test
 python main.py yolo-cnn dataset_exp2/images/IMG_001.jpg
@@ -649,9 +649,9 @@ The labels stay the same — degradation does not move or change the objects.
 
 | ID | Degradation | Parameters | What it simulates |
 |:--:|-------------|-----------|-------------------|
-| D1 | **Gaussian blur** | kernel=7, sigma=3.0 | Out-of-focus camera or shaky hands |
-| D2 | **Gaussian noise** | mean=0, sigma=25 | Low-light sensor noise (grainy photo) |
-| D3 | **JPEG compression** | quality=15 | Images sent through messaging apps or cheap uploads |
+| D1 | **Gaussian blur** | kernel=15, sigma=6.0 | Out-of-focus camera or shaky hands |
+| D2 | **Gaussian noise** | mean=0, sigma=50 | Low-light sensor noise (grainy photo) |
+| D3 | **JPEG compression** | quality=5 | Images sent through messaging apps or cheap uploads |
 
 These cover the three main sources of quality loss in a mobile app:
 **optical** (blur), **sensor** (noise), and **compression** (JPEG artifacts).
@@ -724,7 +724,7 @@ Before running, verify everything is in place:
 # 1. Weights exist
 ls weights/yolo_14class_best.pt
 ls weights/yolo_objectness_best.pt
-ls weights/cnn_winner.pth
+ls weights/cnn_winner.keras
 
 # 2. OpenAI API key is set (for Pipeline A)
 echo $OPENAI_API_KEY    # Should print your key (or set it in .env)
@@ -876,9 +876,9 @@ to match your institution's style and requirements.
 ### 10.4 Robustness evaluation
 
 > *"To assess robustness, three image degradations were applied to the test set:
-> Gaussian blur (kernel=7, sigma=3.0, simulating an out-of-focus camera),
-> additive Gaussian noise (sigma=25, simulating low-light sensor noise), and
-> JPEG compression at quality level 15 (simulating lossy transmission through
+> Gaussian blur (kernel=15, sigma=6.0, simulating an out-of-focus camera),
+> additive Gaussian noise (sigma=50, simulating low-light sensor noise), and
+> JPEG compression at quality level 5 (simulating lossy transmission through
 > messaging applications). These degradations represent the three principal
 > sources of image quality loss in a mobile application workflow: optical,
 > sensor, and compression artefacts. Each pipeline was evaluated on all four
@@ -933,7 +933,7 @@ to match your institution's style and requirements.
 | `dataset_exp2/images_d3_jpeg/` | JPEG-compressed test images |
 | `weights/yolo_14class_best.pt` | Trained 14-class YOLO weights |
 | `weights/yolo_objectness_best.pt` | Trained objectness YOLO weights |
-| `weights/cnn_winner.pth` | EfficientNet-B0 from Experiment 1 |
+| `weights/cnn_winner.keras` | EfficientNet-B0 from Experiment 1 |
 | `results/` | Evaluation outputs (JSON, PNG, LaTeX) |
 | `logs/` | Structured JSONL experiment logs |
 | `training/remap_classes.py` | Remap 63-class public dataset → 14 classes |
