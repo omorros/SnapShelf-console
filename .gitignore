@@ -33,6 +33,12 @@ nul
 # Dataset (large, user-provided)
 dataset/
 dataset_objectness/
+*.zip
+
+# Degraded images (regenerate via: python -m evaluation.generate_degradations)
+dataset_exp2/images_d1_blur/
+dataset_exp2/images_d2_noise/
+dataset_exp2/images_d3_jpeg/
 
 # Model weights (large binary files)
 weights/
