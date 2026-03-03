@@ -1,13 +1,13 @@
 """
-Pipeline A: VLM-only (GPT-4o-mini constrained to 14 labels).
+Pipeline A: VLM-only (GPT-5.2 constrained to 14 labels).
 
-Image -> GPT-4o-mini -> inventory.
+Image -> GPT-5.2 -> inventory.
 Single API call, no detection or pre-processing.
 """
 
 from pathlib import Path
 
-from clients.vlm_client import identify
+from clients.vlm_openai import identify
 from pipelines.output import PipelineResult, make_result
 from config import Timer
 

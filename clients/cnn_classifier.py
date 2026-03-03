@@ -62,16 +62,15 @@ class KerasClassifier(BaseCNNClassifier):
     """
 
     def __init__(self, weights_path: str):
-        import tensorflow as tf
-        # Suppress TF info/warning logs (YOLO already prints enough)
         import os
         os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+        import tensorflow as tf
         tf.get_logger().setLevel("ERROR")
 
         self._tf = tf
         self._preprocess = tf.keras.applications.efficientnet.preprocess_input
-        self.model = tf.keras.models.load_model(weights_path)
         self._img_size = CONFIG.cnn_img_size  # 224
+        self.model = tf.keras.models.load_model(weights_path, compile=False)
 
     def _prepare(self, crop: Image.Image) -> np.ndarray:
         """Resize and preprocess a single PIL image."""

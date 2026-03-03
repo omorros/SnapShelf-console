@@ -11,6 +11,7 @@ google-genai>=1.0.0
 
 # Deep Learning (CNN classifier, Pipeline C)
 tensorflow>=2.15.0
+keras==3.10.0
 torch>=2.1.0
 torchvision>=0.16.0
 
